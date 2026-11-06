@@ -142,6 +142,9 @@ and in the README. This file only points the way and lists the traps.
 - **Compare a rebuilt site with the old one line by line.** Yoast had been providing `robots.txt`,
   the sitemap addresses and `twitter:card` without anyone noticing.
 - **Releases are hard-linked**: backups need `rsync -H`, or every release counts in full.
+- **Restored SSH host keys: `chmod 600`, then `sshd -t`, only then restart.** Keys with mode 640 lost
+  their group `ssh_keys` in the copy, sshd did not start and only the provider console could help
+  (2026-11-06). A test machine with keys of a different origin did not show it.
 - **A test machine can be many times slower than its identical twin** for reasons invisible from
   inside (2026-11-06: reinstall made it 15x faster on disk). Measure before reading anything into
   timings or idle load.

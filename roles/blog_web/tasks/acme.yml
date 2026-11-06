@@ -6,6 +6,15 @@
     name: certbot
     state: present
 
+# certbot only creates this tree on its first run, which comes after this hook.
+- name: ACME | Hook directory
+  ansible.builtin.file:
+    path: /etc/letsencrypt/renewal-hooks/deploy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: ACME | Reload nginx after a renewal
   ansible.builtin.copy:
     dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh

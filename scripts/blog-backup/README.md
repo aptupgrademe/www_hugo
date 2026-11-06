@@ -80,7 +80,9 @@ rsync -rlptD -e "$SSH" "$B/letsencrypt/" "$H:/etc/letsencrypt/"
 rsync -rlptD -e "$SSH" "$B/stats/" "$H:/var/lib/visitor-stats/"
 # SSH host keys, so clients do not warn about a changed server
 rsync -rlptD -e "$SSH" "$B/ssh-hostkeys/" "$H:/etc/ssh/"
-$SSH $H 'restorecon -R /etc/letsencrypt /var/lib/visitor-stats /etc/ssh; systemctl reload nginx; systemctl restart sshd'
+# Check with sshd -t BEFORE restarting: keys with mode 640 lose their group ssh_keys here, sshd
+# then refuses them and does not start, and the SSH session is gone (found 2026-11-06).
+$SSH $H 'chmod 600 /etc/ssh/ssh_host_*_key; restorecon -R /etc/letsencrypt /var/lib/visitor-stats /etc/ssh; systemctl reload nginx; sshd -t && systemctl restart sshd'
 # A published state, without a build: with the deploy key into incoming/, then activate
 D="ssh -i <deploy-key> -p 10022"
 rsync -rlt --delete --chmod=D755,F644 -e "$D" "$B/site/current/" blogdeploy@<blog-host>:/srv/blog/incoming/
