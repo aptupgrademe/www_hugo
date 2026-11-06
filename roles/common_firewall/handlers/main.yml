@@ -17,8 +17,12 @@
 # two hosts existed only in fail2ban. A restart makes
 # fail2ban re-apply every still-active ban from its database. try-restart:
 # does nothing where fail2ban is not running. Runs after the reload because
-# handlers execute in the order they are defined here.
+# handlers execute in the order they are defined here. On a fresh host the unit
+# does not exist yet (the reload happens before common_fail2ban) and systemctl
+# exits with 5, which stopped the first run (found 2026-11-06).
 - name: Re-apply fail2ban bans after the nftables reload
   ansible.builtin.command: systemctl try-restart fail2ban
   listen: Reload nftables
-  changed_when: true
+  register: _fw_f2b_restart
+  changed_when: _fw_f2b_restart.rc == 0
+  failed_when: _fw_f2b_restart.rc not in [0, 5]
