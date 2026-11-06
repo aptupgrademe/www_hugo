@@ -16,5 +16,5 @@ blog_web_http3: true
 blog_web_tls_dir: /etc/nginx/tls
 blog_web_acme_webroot: /var/lib/acme-webroot
 blog_web_geo_file: /etc/nginx/geo/admin-geo.conf
-# Report-only: it logs in the browser, blocks nothing.
-blog_web_csp_report_only: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; media-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+# Enforced for the static site, not for Grafana (see tasks/main.yml). 'wasm-unsafe-eval' is for the Pagefind search.
+blog_web_csp: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; media-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"

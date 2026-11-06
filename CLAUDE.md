@@ -101,6 +101,9 @@ and in the README. This file only points the way and lists the traps.
   `homelab_nginx_bpf`.
 - SELinux lets nginx bind only certain ports: the local status listener is on 8008,
   8081 was denied.
+- **The Content-Security-Policy is enforced for the site only.** Grafana's locations
+  include `blog-headers-base.conf` (via `blog-proxy.conf`), everything else
+  `blog-headers.conf`, which adds the CSP. Grafana has inline scripts of its own.
 - **fail2ban cuts the timestamp out of the line before matching**: the regex must be
   `^<HOST> - \S+ [^"]*"...`, without expecting anything between the brackets.
 

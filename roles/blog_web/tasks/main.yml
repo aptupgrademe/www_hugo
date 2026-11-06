@@ -170,9 +170,9 @@
     access_time: preserve
     mode: "0644"
 
-- name: Web | Security headers
+- name: Web | Security headers for everything nginx answers itself or proxies
   ansible.builtin.copy:
-    dest: /etc/nginx/blog-headers.conf
+    dest: /etc/nginx/blog-headers-base.conf
     owner: root
     group: root
     mode: "0644"
@@ -184,8 +184,20 @@
       add_header Cross-Origin-Opener-Policy "same-origin" always;
       add_header X-Permitted-Cross-Domain-Policies "none" always;
       add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
-      add_header Content-Security-Policy-Report-Only "{{ blog_web_csp_report_only }}" always;
       {% if blog_web_http3 | bool %}add_header Alt-Svc 'h3=":443"; ma=86400' always;{% endif %}
+  notify: Reload nginx
+
+# 2026-11-06: the blog's CSP is enforced now. Only for the static site: Grafana behind /grafana/ brings
+# inline scripts of its own and would stop working with it, so blog-proxy.conf includes the base file only.
+- name: Web | Security headers of the static site, with the Content-Security-Policy
+  ansible.builtin.copy:
+    dest: /etc/nginx/blog-headers.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      include /etc/nginx/blog-headers-base.conf;
+      add_header Content-Security-Policy "{{ blog_web_csp }}" always;
   notify: Reload nginx
 
 - name: Web | Proxy settings for Grafana
@@ -203,7 +215,7 @@
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection $connection_upgrade;
       proxy_read_timeout 300s;
-      include /etc/nginx/blog-headers.conf;
+      include /etc/nginx/blog-headers-base.conf;
   notify: Reload nginx
 
 - name: Web | SELinux module for quic_bpf
@@ -250,6 +262,15 @@
   ansible.builtin.copy:
     src: wp-old-ids.map
     dest: /etc/nginx/wp-old-ids.map
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Web | Old WordPress slugs
+  ansible.builtin.copy:
+    src: wp-old-slugs.map
+    dest: /etc/nginx/wp-old-slugs.map
     owner: root
     group: root
     mode: "0644"

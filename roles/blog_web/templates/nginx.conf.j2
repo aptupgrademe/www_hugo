@@ -56,8 +56,12 @@ http {
 {% endif %}
     limit_req_zone $binary_remote_addr zone=grafana_login:10m rate=5r/s;
 
+    # The old slug addresses are longer than the default bucket of 64 bytes; nginx refuses to start otherwise.
+    # Must come before the first map: a map block fixes the default, and a later setting counts as duplicate.
+    map_hash_bucket_size 256;
     map $arg_p $wp_old_post { default ""; include /etc/nginx/wp-old-ids.map; }
     map $arg_page_id $wp_old_page { default ""; include /etc/nginx/wp-old-ids.map; }
+    map $uri $wp_old_slug { default ""; include /etc/nginx/wp-old-slugs.map; }
 
     map $http_upgrade $connection_upgrade {
         default upgrade;
@@ -154,11 +158,12 @@ http {
         # Old WordPress addresses
         if ($wp_old_post) { return 301 $wp_old_post; }
         if ($wp_old_page) { return 301 $wp_old_page; }
-        location = /feed/ { return 301 /index.xml; }
-        location = /de/feed/ { return 301 /de/index.xml; }
-        location = /fr/feed/ { return 301 /fr/index.xml; }
-        location = /es/feed/ { return 301 /es/index.xml; }
+        if ($wp_old_slug) { return 301 $wp_old_slug; }
+        # Feed addresses of WordPress and the ones browsers and feed readers try on their own.
+        location ~ ^(?<wp_feed_lang>/(?:de|fr|es))?/(?:feed|rss|rss\.xml|feed\.xml)/?$ { return 301 $wp_feed_lang/index.xml; }
+        location ~ ^(?<wp_comments_lang>/(?:de|fr|es))?/comments/feed/?$ { return 301 $wp_comments_lang/index.xml; }
         location ^~ /author/ { return 301 /; }
+        location ~ ^/(?<wp_author_lang>de|fr|es)/author/ { return 301 /$wp_author_lang/; }
         location ~ ^(?<wp_feed_of>/.+)/feed/?$ { return 301 $wp_feed_of/; }
         location = /sitemap_index.xml { return 301 /sitemap.xml; }
         location = /post-sitemap.xml { return 301 /sitemap.xml; }

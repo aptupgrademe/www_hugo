@@ -1,0 +1,16 @@
+# Old WordPress slugs (_wp_old_slug): WordPress redirected them, nginx does it now. Generated once from the final export.
+# Keys are the decoded $uri, targets stay percent-encoded for the Location header.
+"/2025/05/16/wie-ich-mein-computing-mache/" /2025/05/16/my-homelab-nas-setup/;
+"/2025/05/16/wie-ich-mein-computing-mache" /2025/05/16/my-homelab-nas-setup/;
+"/2025/05/22/pi-hole-installiert/" /2025/05/22/pi-hole-installed_ads_terminated/;
+"/2025/05/22/pi-hole-installiert" /2025/05/22/pi-hole-installed_ads_terminated/;
+"/2025/05/25/jellyfin-open-source-medienserver/" /2025/05/25/jellyfin_foss_media_server_that_plays_by_your_rules/;
+"/2025/05/25/jellyfin-open-source-medienserver" /2025/05/25/jellyfin_foss_media_server_that_plays_by_your_rules/;
+"/2025/06/07/my-solar-year/" /2025/06/07/our-solar-year/;
+"/2025/06/07/my-solar-year" /2025/06/07/our-solar-year/;
+"/2025/06/07/one-year-with-my-solar-pv-system-a-candid-nerds-review/" /2025/06/07/our-solar-year/;
+"/2025/06/07/one-year-with-my-solar-pv-system-a-candid-nerds-review" /2025/06/07/our-solar-year/;
+"/2026/07/03/🐧➡️🪟-from-penguin-to-windows-why-im-running-windows-server-2025-in-my-homelab-again/" /2026/07/03/from-penguin-to-windows-why-im-running-windows-server-2025-in-my-homelab-again/;
+"/2026/07/03/🐧➡️🪟-from-penguin-to-windows-why-im-running-windows-server-2025-in-my-homelab-again" /2026/07/03/from-penguin-to-windows-why-im-running-windows-server-2025-in-my-homelab-again/;
+"/2026/07/22/homelab-active-directory-pihole/" /2026/07/22/homelab-active-directory-muench-home-arpa-is-born/;
+"/2026/07/22/homelab-active-directory-pihole" /2026/07/22/homelab-active-directory-muench-home-arpa-is-born/;
