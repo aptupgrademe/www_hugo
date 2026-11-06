@@ -29,6 +29,11 @@ ansible-playbook blog.yml --limit &lt;host&gt; --tags common_rkhunter,common_aid
 <p>dnf-automatic spielt Sicherheitsupdates nachts ein, nginx kommt aus dem Mainline-Repo von nginx.org. Reihenfolge der Nacht: AIDE 00:00, Updates 01:00–02:00, Neustart bei Bedarf 03:30, Dienste neu starten 03:45, AIDE-Baseline 04:00. Feste Versionen stehen in <code>inventory/group_vars/all/versions.yml</code>. Der Bericht von <code>common_version_check</code> zeigt, was neuer ist.</p>
 <h2>TLS</h2>
 <p>certbot holt die Zertifikate über HTTP-01 und erneuert sie 30 Tage vor Ablauf, danach lädt er nginx neu. Monit warnt, wenn ein Zertifikat weniger als 21 Tage gilt oder noch selbst signiert ist. Auf einem Host ohne passenden DNS-Eintrag bleibt es mit <code>blog_web_acme_enabled: false</code> beim selbst signierten Zertifikat.</p>
+<p><strong>Die Domain steht auf der HSTS-Preload-Liste.</strong> Browser lassen deshalb keine Zertifikatswarnung zum Wegklicken zu, und das Löschen von Browserdaten hilft nicht. Ein abgelaufenes oder selbst signiertes Zertifikat bedeutet: Niemand kommt auf die Seite. Im Notfall ein gesichertes, noch gültiges Zertifikat aktivieren:</p>
+<pre><code>ln -sfn /etc/nginx/tls/&lt;saved&gt;.crt /etc/nginx/tls/current.crt
+ln -sfn /etc/nginx/tls/&lt;saved&gt;.key /etc/nginx/tls/current.key
+restorecon /etc/nginx/tls/*; nginx -t &amp;&amp; systemctl reload nginx</code></pre>
+<p>Zum Ansehen einer Testmaschine unter dem echten Namen braucht es ein eigenes Browserprofil, in Firefox mit <code>network.stricttransportsecurity.preloadlist=false</code>.</p>
 <h2>HTTP/3</h2>
 <p>HTTP/3 braucht nginx Mainline mit <code>quic_bpf on</code>. Ohne das hängen Verbindungen nach einem Reload. Abschalten lässt es sich an einer Stelle mit <code>blog_web_http3: false</code>, das gilt auch für die Firewall-Regel. Prüfen:</p>
 <pre><code>curl --http3-only -sI https://&lt;host&gt;/ | head -1
@@ -45,9 +50,9 @@ fail2ban-client set nginx-bad-paths unbanip &lt;address&gt;</code></pre>
 <h2>Überwachung</h2>
 <p>Grafana ist unter <code>/grafana/</code> erreichbar, nur aus der Länderliste. Alarme kommen per Mail von Grafana und von Monit. Loki hält die Logs 14 Tage, die Zugriffslogs liegen 14 Tage auf der Platte. Besucherzahlen liegen nur als Tagessummen in <code>/var/lib/visitor-stats/</code>.</p>
 <h2>Sicherung</h2>
-<p>Eine Backup-Maschine zieht jede Nacht die Fassungen, Zertifikate, Besucherzahlen und SSH-Hostschlüssel und versioniert sie mit rdiff-backup. Monit warnt, wenn die letzte Sicherung älter als drei Tage ist. Die Beiträge liegen zusätzlich in Git. Einzelheiten stehen in <code>scripts/blog-backup/README.md</code>.</p>
+<p>Eine Backup-Maschine zieht jede Nacht die Fassungen, Zertifikate, Besucherzahlen und SSH-Hostschlüssel und versioniert sie mit rdiff-backup. Monit warnt, wenn die letzte Sicherung älter als drei Tage ist. Die Beiträge liegen zusätzlich in Git. Ein abgebrochener Lauf hinterlässt keinen Stempel <code>last-success</code>, und rdiff-backup versioniert ihn dann nicht. Einzelheiten und der Restore stehen in <code>scripts/blog-backup/README.md</code>. Für einen alten Stand immer <code>site</code> wiederherstellen, nicht <code>site/current</code>: Das ist nur ein Symlink.</p>
 <h2>Neu aufsetzen</h2>
-<p>Frisches AlmaLinux 10, <code>ansible_port: 22</code>, Playbook starten. Es startet den Server einmal neu und läuft auf Port 10022 weiter. Danach <code>ansible_port</code> auf 10022 setzen und die Seite deployen. Die Beiträge brauchen dafür keine Sicherung, nur das Git-Repository.</p>
+<p>Frisches AlmaLinux 10, <code>ansible_port: 22</code>, Playbook starten. Es startet den Server einmal neu und läuft auf Port 10022 weiter. Danach <code>ansible_port</code> auf 10022 setzen und die Seite deployen. Die Beiträge brauchen dafür keine Sicherung, nur das Git-Repository. Aus der Sicherung kommen Besucherzahlen und SSH-Hostschlüssel. Bricht der erste Lauf nach dem Neustart ab: Fehler beheben, <code>ansible_port: 10022</code> setzen und erneut starten. Danach muss <code>scripts/check-drift.sh blog.yml &lt;host&gt;</code> <code>changed=0</code> zeigen. Ein kurzer SELinux-Alarm von <code>useradd</code> beim Installieren von Alloy ist bekannt und harmlos.</p>
 <h2>Fehlersuche</h2>
 <p>Ein Dienst kann „active“ sein und trotzdem in der falschen SELinux-Domäne laufen. Nach jeder Änderung an Unit oder Sandbox deshalb <code>ps -eZ</code> prüfen.</p>
 <pre><code>systemctl status nginx

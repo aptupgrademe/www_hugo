@@ -53,6 +53,8 @@ There is no PHP, no database, no container runtime and no login for visitors.
   (see below)
 - TLS 1.2 + 1.3 only, AEAD ciphers, ECDHE with hybrid post-quantum `X25519MLKEM768`
   offered first, session tickets off, HSTS with preload
+- The domain is on the HSTS preload list: nobody can click past a certificate warning, so an
+  expired certificate takes the site offline for everyone
 - Let's Encrypt through certbot (HTTP-01, webroot); a self-signed certificate until
   then, so a host never answers with a bare TLS reset
 - **Atomic deploys and rollback**: the deploy key's forced command `blog-deploy` accepts

@@ -29,6 +29,11 @@ ansible-playbook blog.yml --limit &lt;host&gt; --tags common_rkhunter,common_aid
 <p>dnf-automatic installs security updates at night; nginx comes from the nginx.org mainline repository. Order of the night: AIDE 00:00, updates 01:00–02:00, reboot if needed 03:30, service restarts 03:45, AIDE baseline 04:00. Pinned versions are in <code>inventory/group_vars/all/versions.yml</code>. The <code>common_version_check</code> report shows what is newer.</p>
 <h2>TLS</h2>
 <p>certbot obtains certificates through HTTP-01, renews them 30 days before expiry and then reloads nginx. Monit warns when a certificate has fewer than 21 days left or is still self-signed. On a host without matching DNS, <code>blog_web_acme_enabled: false</code> keeps the self-signed certificate.</p>
+<p><strong>The domain is on the HSTS preload list.</strong> Browsers therefore do not let anyone click past a certificate warning, and clearing browser data does not help. An expired or self-signed certificate means nobody reaches the site. In an emergency, activate a saved certificate that is still valid:</p>
+<pre><code>ln -sfn /etc/nginx/tls/&lt;saved&gt;.crt /etc/nginx/tls/current.crt
+ln -sfn /etc/nginx/tls/&lt;saved&gt;.key /etc/nginx/tls/current.key
+restorecon /etc/nginx/tls/*; nginx -t &amp;&amp; systemctl reload nginx</code></pre>
+<p>To view a test machine under the real name you need a separate browser profile, in Firefox with <code>network.stricttransportsecurity.preloadlist=false</code>.</p>
 <h2>HTTP/3</h2>
 <p>HTTP/3 needs nginx mainline with <code>quic_bpf on</code>. Without it, connections hang after a reload. <code>blog_web_http3: false</code> switches it off in one place, including the firewall rule. To check:</p>
 <pre><code>curl --http3-only -sI https://&lt;host&gt;/ | head -1
@@ -45,9 +50,9 @@ fail2ban-client set nginx-bad-paths unbanip &lt;address&gt;</code></pre>
 <h2>Monitoring</h2>
 <p>Grafana is at <code>/grafana/</code>, from the country list only. Alerts arrive by mail from Grafana and from Monit. Loki keeps logs for 14 days, and access logs stay on disk for 14 days. Visitor numbers exist only as daily totals in <code>/var/lib/visitor-stats/</code>.</p>
 <h2>Backup</h2>
-<p>A backup machine pulls the releases, certificates, visitor numbers and SSH host keys every night and versions them with rdiff-backup. Monit warns when the last backup is older than three days. The posts are also in Git. Details are in <code>scripts/blog-backup/README.md</code>.</p>
+<p>A backup machine pulls the releases, certificates, visitor numbers and SSH host keys every night and versions them with rdiff-backup. Monit warns when the last backup is older than three days. The posts are also in Git. An aborted run leaves no <code>last-success</code> stamp, and rdiff-backup then refuses to version it. Details and the restore are in <code>scripts/blog-backup/README.md</code>. For an older state always restore <code>site</code>, not <code>site/current</code>: that is only a symlink.</p>
 <h2>Rebuilding</h2>
-<p>Fresh AlmaLinux 10, <code>ansible_port: 22</code>, run the playbook. It reboots the server once and continues on port 10022. Then set <code>ansible_port</code> to 10022 and deploy the site. The posts need no backup for this, only the Git repository.</p>
+<p>Fresh AlmaLinux 10, <code>ansible_port: 22</code>, run the playbook. It reboots the server once and continues on port 10022. Then set <code>ansible_port</code> to 10022 and deploy the site. The posts need no backup for this, only the Git repository. Visitor numbers and SSH host keys come from the backup. If the first run aborts after the reboot: fix the error, set <code>ansible_port: 10022</code> and run again. Afterwards <code>scripts/check-drift.sh blog.yml &lt;host&gt;</code> must show <code>changed=0</code>. A brief SELinux alert from <code>useradd</code> while installing Alloy is known and harmless.</p>
 <h2>Troubleshooting</h2>
 <p>A service can be "active" and still run in the wrong SELinux domain. Check <code>ps -eZ</code> after every unit or sandbox change.</p>
 <pre><code>systemctl status nginx

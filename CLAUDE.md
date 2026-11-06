@@ -117,6 +117,17 @@ and in the README. This file only points the way and lists the traps.
 
 ### Ansible
 - **`force_handlers = True`** (ansible.cfg): handlers were lost after an aborted run.
+- **Only a real run from zero proves the first install.** A rerun hides what needs an empty
+  machine. Three bugs surfaced that way on 2026-11-06 (next three points), each invisible before.
+- **`async` must outlast the command.** With `async: 1` and `sleep 2`, ansible-core 2.21 killed
+  the reboot, reported `changed`, and the play then waited for a port that never opened. The
+  result is in `~/.ansible_async` on the host.
+- **Handlers can run before the role they touch.** `systemctl try-restart` exits 5 for a unit that
+  does not exist yet, which stopped the first run.
+- **`nginx -t` creates an empty pid file while nginx is stopped**, labelled `var_run_t`; nginx in
+  `httpd_t` may not open it and does not start. `blog_web` removes an empty one before starting.
+- **Background jobs must really detach** (`setsid nohup ... &`). `setsid` alone returns at once and
+  looks like a finished run; a job tied to the session dies with it.
 - **`'\b'` inside a `when:` string is a backspace** in Jinja. A task ran on every real
   run because of it, hidden in check mode.
 
@@ -125,6 +136,15 @@ and in the README. This file only points the way and lists the traps.
   there.
 - **A comment inside a rendered config counts as a change** and restarts the service.
 - `/srv/blog` is excluded from AIDE: every deploy changes it.
+- **The domain is on the HSTS preload list.** No click-through on certificate warnings for anyone,
+  including us: a self-signed test under the real name needs a separate browser profile. A failed
+  renewal takes the site offline, so keep a saved certificate at hand when rebuilding.
+- **Compare a rebuilt site with the old one line by line.** Yoast had been providing `robots.txt`,
+  the sitemap addresses and `twitter:card` without anyone noticing.
+- **Releases are hard-linked**: backups need `rsync -H`, or every release counts in full.
+- **A test machine can be many times slower than its identical twin** for reasons invisible from
+  inside (2026-11-06: reinstall made it 15x faster on disk). Measure before reading anything into
+  timings or idle load.
 
 ### Monitoring and alerts
 - **Grafana alert rules need `condition`**; with `execErrState: OK` a broken rule
