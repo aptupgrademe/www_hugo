@@ -8,7 +8,9 @@
 # Wiederherstellen eines alten Stands, z. B. von vor 3 Tagen:
 #   rdiff-backup --api-version 201 list increments /data/backup/blog-rdiff
 #   rdiff-backup --api-version 201 restore --at 3D \
-#       /data/backup/blog-rdiff/blog/site/current /tmp/restore-site
+#       /data/backup/blog-rdiff/blog/site /tmp/restore-site
+#   Danach liegt die aktive Fassung unter /tmp/restore-site/current/. Nicht direkt
+#   site/current wiederherstellen: Das ist nur ein Symlink und zeigt dann ins Leere.
 # =============================================================================
 
 set -o pipefail
@@ -39,6 +41,9 @@ if [ -z "$SRC_HOST" ]; then
         eval "exec $fd>/tmp/blog-backup-$inst.lock"
         flock -w 10800 $fd || fail "Backup $inst läuft seit über 3 h – rdiff übersprungen"
         fd=$((fd + 1))
+        # Ein abgebrochener oder leerer Stand würde als "alles gelöscht" in die Historie wandern.
+        [ -s "$SRC_PATH/$inst/last-success" ] && [ -s "$SRC_PATH/$inst/site/current/index.html" ] \
+            || fail "Quelle $SRC_PATH/$inst nicht bereit (Backup fehlgeschlagen oder leer)"
     done
 else
     # Entfernte Quelle: auf dem Quellrechner auf laufende Backups warten und prüfen, dass

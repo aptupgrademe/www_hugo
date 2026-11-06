@@ -24,6 +24,8 @@ SSH_KEY=${SSH_KEY:-$HOME/.ssh/id_rsa}
 KEEP_LOGS=${KEEP_LOGS:-30}
 REMOTE_STAMP=${REMOTE_STAMP:-1}
 CONTENT_DIR=${CONTENT_DIR:-}
+# Nur für Testmaschinen ohne echtes Zertifikat auf 0 setzen. Sonst fehlende Zertifikate sind ein Fehler.
+LETSENCRYPT=${LETSENCRYPT:-1}
 
 # DATA_ROOT/LOGDIR überschreibbar, z. B. auf einem NAS: DATA_ROOT=/storage
 DATA_ROOT=${DATA_ROOT:-/data/backup/blog-data}
@@ -45,6 +47,8 @@ exec 9>"/tmp/blog-backup-$NAME.lock"
 flock -n 9 || { log "läuft bereits – übersprungen"; exit 0; }
 
 log "=== Backup $NAME start ($TARGET) ==="
+# Erst ein vollständiger Lauf setzt den Stempel neu: Solange er fehlt, versioniert rdiff nichts.
+rm -f "$BASE/last-success"
 for i in $(seq 1 90); do
     $SSH "$TARGET" true 2>/dev/null && break
     [ "$i" -eq 90 ] && fail "$REMOTE_HOST per SSH nicht erreichbar"
@@ -54,7 +58,7 @@ done
 pull() {   # pull <Quelle auf dem Server> <Zielordner> [Pflicht=1]
     log "rsync $1 -> $BASE/$2 ..."
     mkdir -p "$BASE/$2"
-    rsync -rlptD --delete --delete-delay --partial --numeric-ids -h --stats \
+    rsync -rlptDH --delete --delete-delay --partial --numeric-ids -h --stats \
         -e "$SSH" "$TARGET:$1" "$BASE/$2/" | grep -E "^(Number of (regular )?files|Total transferred|Total file size|Number of deleted)"
     local rc=${PIPESTATUS[0]}
     [ "$rc" -eq 0 ] || [ "$rc" -eq 24 ] || fail "rsync $1 (Exit $rc)"
@@ -62,7 +66,7 @@ pull() {   # pull <Quelle auf dem Server> <Zielordner> [Pflicht=1]
 }
 
 pull /srv/blog/ site
-pull /etc/letsencrypt/ letsencrypt
+[ "$LETSENCRYPT" = 1 ] && pull /etc/letsencrypt/ letsencrypt
 pull /var/lib/visitor-stats/ stats
 pull '/etc/ssh/ssh_host_*' ssh-hostkeys
 

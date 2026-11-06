@@ -153,6 +153,10 @@ http {
         location = /de/feed/ { return 301 /de/index.xml; }
         location = /fr/feed/ { return 301 /fr/index.xml; }
         location = /es/feed/ { return 301 /es/index.xml; }
+        location = /sitemap_index.xml { return 301 /sitemap.xml; }
+        location = /post-sitemap.xml { return 301 /sitemap.xml; }
+        location = /page-sitemap.xml { return 301 /sitemap.xml; }
+        location = /category-sitemap.xml { return 301 /sitemap.xml; }
 
         # Hidden files never exist on this site.
         location ~ /\.(?!well-known/) {

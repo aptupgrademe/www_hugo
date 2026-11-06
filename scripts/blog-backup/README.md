@@ -41,7 +41,9 @@ crontab -e
 
 After every success the blog host gets `/var/lib/blog-backup/last-success`.
 Monit (`common_monit`, check `blog_backup`) alerts when it is older than
-`monit_backup_max_days` (3).
+`monit_backup_max_days` (3). A backup that does not finish leaves no local
+`last-success`, and `blog_rdiff.sh` then refuses to version that instance.
+A test machine without a real certificate sets `LETSENCRYPT=0` in its instance script.
 
 ### Split setup: pull host and versioning host
 
@@ -76,7 +78,9 @@ H=root@<blog-host>; SSH="ssh -p 10022"
 rsync -rlptD -e "$SSH" "$B/letsencrypt/" "$H:/etc/letsencrypt/"
 # Visitor counts
 rsync -rlptD -e "$SSH" "$B/stats/" "$H:/var/lib/visitor-stats/"
-$SSH $H 'restorecon -R /etc/letsencrypt /var/lib/visitor-stats; systemctl reload nginx'
+# SSH host keys, so clients do not warn about a changed server
+rsync -rlptD -e "$SSH" "$B/ssh-hostkeys/" "$H:/etc/ssh/"
+$SSH $H 'restorecon -R /etc/letsencrypt /var/lib/visitor-stats /etc/ssh; systemctl reload nginx; systemctl restart sshd'
 # A published state, without a build: with the deploy key into incoming/, then activate
 D="ssh -i <deploy-key> -p 10022"
 rsync -rlt --delete --chmod=D755,F644 -e "$D" "$B/site/current/" blogdeploy@<blog-host>:/srv/blog/incoming/

@@ -256,6 +256,20 @@
     validate: nginx -t -c %s
   notify: Reload nginx
 
+# "nginx -t" (the validate above) creates an empty pid file while nginx is stopped.
+# It is labelled var_run_t, httpd_t may not open it, and nginx then fails to start
+# with "open() /run/nginx.pid failed (13: Permission denied)" - on every first
+# install (found 2026-11-06). A running nginx has a pid in the file, so an empty
+# one is always safe to remove.
+- name: Web | Remove the empty pid file that nginx -t leaves behind
+  ansible.builtin.shell: |
+    if [ -e /run/nginx.pid ] && [ ! -s /run/nginx.pid ]; then
+      rm -f /run/nginx.pid
+      echo removed
+    fi
+  register: _web_empty_pid
+  changed_when: "'removed' in (_web_empty_pid.stdout | default(''))"
+
 - name: Web | Enable and start nginx
   ansible.builtin.systemd_service:
     name: nginx

@@ -13,9 +13,14 @@
 # failed right away with "port 10022: Connection refused" and the host was
 # never rebooted (found 2026-09-29). Fire-and-forget over
 # port 22, then switch the port and wait for the host to come back.
+#
+# async must outlast the sleep: with "async: 1" the watcher of ansible-core 2.21
+# killed the job after one second, before the reboot was sent. The task still
+# reported "changed", and the wait below ran into port 10022 of a host that had
+# never rebooted (found 2026-11-06, the result is in ~/.ansible_async on the host).
 - name: First run | Reboot (sent over the current port-22 connection)
   ansible.builtin.shell: sleep 2 && systemctl reboot
-  async: 1
+  async: 60
   poll: 0
 
 - name: First run | Use the new SSH port for the rest of this run
