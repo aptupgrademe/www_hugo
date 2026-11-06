@@ -4,7 +4,7 @@
 
 galaxy_info:
   author: raphael
-  description: Configure nftables firewall rules (IPv4 + IPv6) via a single template on AlmaLinux 9
+  description: Configure nftables firewall rules (IPv4 + IPv6) via a single template on AlmaLinux 10
   license: MIT
   min_ansible_version: "2.10"
   platforms:

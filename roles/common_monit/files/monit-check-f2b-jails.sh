@@ -1,19 +1,14 @@
 #!/bin/bash
 # Managed by Ansible (common_monit) - do not edit manually.
-# Monit `check program` helper: verifies the fail2ban jails that watch K3s pod
-# logs are actually watching a file, not just "running".
+# Monit `check program` helper: verifies the fail2ban jails that watch nginx's
+# log are actually watching a file, not just "running".
 #
-# Why this exists: those jails point at
-#   /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
-# and the pod UID in that path changes every time the ingress pod is recreated
-# (image update, helm upgrade, node reboot, rescheduling). fail2ban resolves
-# the glob only at start, so after any such restart the jail keeps running with
-# a file list pointing at a path that no longer exists - it can never ban
-# anyone again. Found live 2026-09-11: a helm upgrade that morning had silently
-# disabled all five web jails, and nothing noticed, because monit's other check
-# only asks whether the fail2ban *process* is alive.
+# Why this exists: found 2026-09-11 on the former K3s setup, a restart of the web
+# server had silently disabled all web jails, and nothing noticed, because monit's
+# other check only asks whether the fail2ban *process* is alive. A jail with an
+# empty file list can never ban anyone again.
 #
-# Remedy when this fires: `systemctl restart fail2ban` re-resolves the globs.
+# Remedy when this fires: `systemctl restart fail2ban`.
 
 command -v fail2ban-client >/dev/null 2>&1 || exit 0
 systemctl is-active --quiet fail2ban 2>/dev/null || exit 0   # the service check covers that
@@ -32,5 +27,5 @@ for jail in $(fail2ban-client status 2>/dev/null \
 done
 
 [ -z "$empty" ] && exit 0
-echo "fail2ban jails watching no log file (ingress pod was probably recreated):${empty}. Fix: systemctl restart fail2ban"
+echo "fail2ban jails watching no log file (check the nginx log path):${empty}. Fix: systemctl restart fail2ban"
 exit 1

@@ -5,8 +5,8 @@
 # the firewall lets it through.
 #
 # Why this exists: on 2026-10-21 a comparison found 1 to 5 such addresses per
-# host. All jails shared one set, and the 1-hour unban of nginx-k3s-scanner
-# deleted addresses that nginx-k3s-bad-paths had banned for 24 h. Since then
+# host. All jails shared one set, and the 1-hour unban of the scanner jail
+# deleted addresses that the bad-paths jail had banned for 24 h. Since then
 # every jail has its own set (fail2ban_nft_jails); this check proves it stays
 # that way, and would also catch a firewall reload that emptied the sets
 # without fail2ban re-applying its bans.

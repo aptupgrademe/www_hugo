@@ -1,4 +1,4 @@
-"""Data presence check (common_verify, both stacks), run from stdin.
+"""Data presence check (common_verify), run from stdin.
 
 "Configured and running" missed two silent gaps: node_exporter lost its disk
 metrics for two days (a hidden SELinux denial) and alert rules without a
@@ -15,11 +15,7 @@ KEY = {  # metric -> what is missing when it has no series
     'node_filesystem_size_bytes{mountpoint="/"}': 'disk metrics (node_exporter filesystem)',
     'node_memory_MemAvailable_bytes': 'memory metrics (node_exporter)',
     'node_scrape_collector_success{collector="filesystem"} == 1': 'filesystem collector',
-    'mysql_up == 1': 'MariaDB exporter',
-    'phpfpm_up == 1': 'PHP-FPM exporter',
-    'container_memory_working_set_bytes': 'container metrics (cAdvisor)',
-    'kube_pod_status_phase': 'kube-state-metrics',
-    'trivy_last_run_timestamp_seconds': 'Trivy textfile metric',
+    'nginx_up == 1': 'nginx exporter',
 }
 fails = 0
 

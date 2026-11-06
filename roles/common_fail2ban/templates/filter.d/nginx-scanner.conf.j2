@@ -1,0 +1,11 @@
+# Managed by Ansible – do not edit manually
+# Detects directory/vulnerability scanners by counting repeated 403/404 responses.
+# Bots hammering non-existent or explicitly blocked paths are caught here.
+# Log source: nginx access log.
+
+# fail2ban cuts the timestamp out of the line before matching, so the pattern
+# must not expect the brackets to contain anything.
+[Definition]
+failregex = ^<HOST> - \S+ [^"]*"\S+\s+\S+\s+HTTP/\S+"\s+40[34]\s+\d+
+
+ignoreregex =

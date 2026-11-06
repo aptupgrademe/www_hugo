@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Visitor statistics for the WordPress blog, derived from the nginx-ingress
-access log.
+Visitor statistics for the blog, derived from the nginx access log.
 
-Runs ON the blog host, not from a workstation: it needs /var/log/pods and the
+Runs ON the blog host, not from a workstation: it needs /var/log/nginx and the
 local GeoLite2 database. That is deliberate - visitor IPs are personal data
 under GDPR, so they are never sent to a third-party geolocation API and never
 leave the server. Only aggregated, /24-masked output is printed.
@@ -55,11 +54,10 @@ Known limits - read before quoting any number:
     drift as providers get new allocations.
   * No cookies, no JS beacon - this is server-log analysis. It cannot tell a
     returning reader from a new one beyond the IP.
-  * Rotated logs ("N.log.<timestamp>", optionally .gz) are read too; the
+  * Rotated logs (access.log-<date>, optionally .gz) are read too; the
     "Period" line shows the span actually covered - check it before quoting.
-  * Log retention is the real constraint: k3s rotates container logs at 10 MB
-    and keeps very few, so in practice only ~4 days are on disk at any time.
-    For genuine weekly numbers, ship the logs somewhere persistent first.
+  * nginx keeps 14 days of access logs (blog_web); the daily --record file
+    carries the trend beyond that.
 """
 
 import argparse
@@ -75,20 +73,20 @@ import socket
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
-# "*.log*", not "*.log": k3s/kubelet renames rotated files to "N.log.<YYYYMMDD-HHMMSS>"
-# (and may gzip older ones). A plain "*.log" silently read only the live file,
-# i.e. the few hours since the last rotation instead of the whole window.
-DEFAULT_LOGS = "/var/log/pods/ingress-nginx_*/*/*.log*"
+# "*.log*", not "*.log": logrotate renames rotated files (and gzips older ones).
+# A plain "*.log" silently read only the live file, i.e. the few hours since the
+# last rotation instead of the whole window.
+DEFAULT_LOGS = "/var/log/nginx/access.log*"
 # DB-IP's free country database, refreshed monthly by the blog_visitor_stats
-# role. The GeoLite2 copy from the EL9 package is frozen at 2019-12 and puts
+# role. The GeoLite2 copy from the distro package is frozen at 2019-12 and puts
 # newer allocations in the wrong country; it is only the fallback.
 DBIP_MMDB = "/var/lib/visitor-stats/dbip-country-lite.mmdb"
 DEFAULT_MMDB = DBIP_MMDB if os.path.exists(DBIP_MMDB) else "/usr/share/GeoIP/GeoLite2-Country.mmdb"
 
-# CRI log line wrapping the standard nginx combined format:
-#   <rfc3339> stdout F <ip> - - [<time>] "<method> <path> <proto>" <st> <b> "<ref>" "<ua>"
+# The standard nginx combined format:
+#   <ip> - - [<time>] "<method> <path> <proto>" <st> <b> "<ref>" "<ua>"
 LINE_RE = re.compile(
-    r'^\S+ stdout \w+ (?P<ip>[0-9a-fA-F.:]+) \S+ \S+ \[(?P<t>[^\]]+)\] '
+    r'^(?P<ip>[0-9a-fA-F.:]+) \S+ \S+ \[(?P<t>[^\]]+)\] '
     r'"(?P<method>[A-Z]+) (?P<path>\S*)[^"]*" (?P<status>\d{3}) \S+ '
     r'"(?P<ref>[^"]*)" "(?P<ua>[^"]*)"')
 
@@ -153,7 +151,7 @@ ENGINE_NAMES = {"google": "Google", "bing": "Bing", "duckduckgo": "DuckDuckGo",
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--logs", default=DEFAULT_LOGS, help="glob for ingress logs")
+    p.add_argument("--logs", default=DEFAULT_LOGS, help="glob for nginx access logs")
     p.add_argument("--mmdb", default=DEFAULT_MMDB, help="GeoLite2 Country database")
     p.add_argument("--days", type=float, default=None,
                    help="only consider the last N days (default: whole log)")

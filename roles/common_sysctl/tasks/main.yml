@@ -75,7 +75,7 @@
 
 # -----------------------------------------------------------------------------
 # Transparent Huge Pages – set to madvise (not a sysctl, needs systemd service)
-# THP=always causes latency spikes in K3s pods, MariaDB, Redis.
+# THP=always can cause latency spikes; nothing on this host asks for huge pages.
 # -----------------------------------------------------------------------------
 - name: Sysctl | Deploy THP systemd service (madvise at boot)
   ansible.builtin.copy:
@@ -105,7 +105,7 @@
     state: started
     daemon_reload: true
 
-# Pressure stall information (PSI): the EL9 kernel is built with PSI off by
+# Pressure stall information (PSI): the EL kernel is built with PSI off by
 # default (CONFIG_PSI_DEFAULT_DISABLED), so /proc/pressure is missing, the
 # node_exporter "pressure" collector fails and the Pressure panel of the node
 # dashboard stays empty. psi=1 on the kernel command line turns it on - for
@@ -122,7 +122,7 @@
   ansible.builtin.command: grubby --update-kernel=ALL --args=psi=1
   when: >-
     sysctl_grubby.stdout_lines | select('match', '^args=')
-    | reject('search', '\bpsi=1\b') | list | length > 0
+    | reject('search', 'psi=1') | list | length > 0
   changed_when: true
 
 - name: Sysctl | psi=1 for kernels installed later (/etc/kernel/cmdline)

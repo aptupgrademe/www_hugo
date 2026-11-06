@@ -47,22 +47,12 @@ check program svc_{{ svc | replace('-', '_') }} with path "/usr/local/sbin/monit
 # --- Firewall actually enforcing (input chain default-drop) ---
 check program firewall with path "/usr/local/sbin/monit-check-firewall.sh"
     if status != 0 then alert
-{% if 'k3s' in monit_present_services %}
-
-# --- K3s workloads in a bad state ---
-check program k3s_pods with path "/usr/local/sbin/monit-check-pods.sh"
-    if status != 0 then alert
 
 # --- fail2ban jails actually watching a file, not just "running" ---
-# The pod-log path contains the ingress pod's UID and changes on every pod
-# restart, but fail2ban resolves the glob only at start - so a restart leaves
-# the jails running against a path that no longer exists, banning nobody.
-# The separate fail2ban process check above cannot see this.
 check program f2b_jails with path "/usr/local/sbin/monit-check-f2b-jails.sh"
     if status != 0 then alert
 
 # --- TLS certificates: warn long before they expire ---
-# Hostnames are discovered from the Ingress resources by the script itself.
 # Checked about once an hour - certificate expiry moves in days, there is
 # nothing to gain from checking every cycle, and each check opens a TLS
 # connection per hostname.
@@ -73,29 +63,15 @@ check program f2b_jails with path "/usr/local/sbin/monit-check-f2b-jails.sh"
 check program certs with path "/usr/local/sbin/monit-check-certs.sh {{ monit_cert_min_days }}"
     every "0-1 * * * *"
     if status != 0 then alert
-{% endif %}
-{% if stack == 'nextcloud' %}
 
-# --- Nextcloud backup freshness ---
-# The backup is PULLED nightly by a backup machine in the homelab (systemd
-# timer there), which touches this file after every successful run. If that
-# machine is off, or the backup keeps failing, nobody would notice without
-# this check. A missing file (no backup yet) alerts too.
-# Two-minute window (17-18) for the same reason as the certs check above: a
-# single minute is hit only if a {{ monit_check_interval }}s cycle happens to start in it, which
-# depends on when Monit was started - after an unlucky restart the check would
-# never run and a dead backup would never alert.
-check file nc_backup with path /var/lib/nextcloud-backup/last-success
+# --- Backup freshness ---
+# The backup machine pulls the blog (scripts/blog-backup) and touches this file
+# on success. A missing file alerts too. Two-minute window for the same reason
+# as the certs check above.
+check file blog_backup with path /var/lib/blog-backup/last-success
     every "17-18 * * * *"
     if timestamp > {{ monit_backup_max_days }} days then alert
-{% endif %}
-{% if stack == 'wordpress' %}
 
-# --- WordPress backup freshness ---
-# Same idea as nc_backup: the backup PC pulls the blog (scripts/wordpress-backup,
-# /data/backup/wordpress/<name>_backup.sh) and touches this file on success.
-# Two-minute window, see nc_backup above.
-check file wp_backup with path /var/lib/wordpress-backup/last-success
-    every "17-18 * * * *"
-    if timestamp > {{ monit_backup_max_days }} days then alert
-{% endif %}
+# --- The published site answers, not just "nginx runs" ---
+check host blog_site with address 127.0.0.1
+    if failed port 443 protocol https request / with http headers [Host: {{ blog_web_tls_names[0] }}] status = 200 then alert

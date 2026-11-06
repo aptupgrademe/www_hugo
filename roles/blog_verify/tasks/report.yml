@@ -1,243 +1,62 @@
 ---
-# =============================================================================
-# COMPUTE BOOLEAN RESULTS
-# =============================================================================
-#
 # Part 2 of blog_verify: judge, report, mail, assert.
-#
-# Ansible/Jinja concepts used here:
-#   default(x)       a fallback for a missing value. Every _v_* result is
-#                    read with one, so a skipped or crashed check gives a
-#                    clear "failed" instead of an "undefined variable" error.
-#   regex_search(pattern, '\\1')  returns the first capture group as a
-#                    list ("default([], true) | first" then turns
-#                    "no match" into a fallback).
-#   select / rejectattr  filter lists: "select" keeps true values (count of
-#                    passed checks), "rejectattr('1')" keeps the [name,
-#                    result] pairs whose result is false (the failed ones).
-#   assert           fails the task (and the host) when any "that:"
-#                    expression is false. quiet: true prints only the
-#                    fail/success message, not every expression.
-#   include_role ... tasks_from + when  runs another role's task file only
-#                    when asked for (-e monit_selftest=true).
-
-- name: Verify | Compute pass/fail for each check
+- name: Verify | Compute results
   ansible.builtin.set_fact:
-    # Dienste
-    _r_nft_svc:     "{{ _v_nft_svc.stdout | default('') == 'active' }}"
-    _r_nft_tables:  "{{ 'inet filter' in (_v_nft_tables.stdout | default('')) }}"
-    _r_nft_policy:  "{{ (_v_nft_policy.stdout | default('0') | trim | int) > 0 }}"
-    _r_nft_f2b_sets: "{{ (_v_nft_f2b_sets.stdout | default('0') | trim | int) == (fail2ban_nft_jails | length) * 2 }}"
-    _r_f2b_effect:  "{{ (_v_f2b_effect.stdout_lines | default([]) | last | default('')) == 'RESULT 0' }}"
-    _r_data:        "{{ (_v_data_presence.stdout_lines | default([]) | last | default('')) == 'RESULT 0' }}"
-    _r_f2b_svc:     "{{ _v_f2b_svc.stdout | default('') == 'active' }}"
-    _r_f2b_jails:   "{{ (_v_f2b_status.stdout | default('') | regex_search('Number of jail:\\s*(\\d+)', '\\1') | default([], true) | first | default('0') | int) >= verify_f2ban_min_jails }}"
-    _r_k3s:         "{{ _v_k3s_svc.stdout | default('') == 'active' }}"
-    _r_auditd:      "{{ _v_auditd_svc.stdout | default('') == 'active' }}"
-    _r_selinux:     "{{ _v_selinux.stdout | default('') == 'Enforcing' }}"
-    _r_daemon_dom:  "{{ (_v_daemon_domains.stdout | default('?') | trim) == '' }}"
-    _r_pod_selinux: "{{ (_v_pod_selinux.stdout_lines | default(['0']) | first | default('0') | int) > 0 and (_v_pod_selinux.stdout_lines | default([]) | length) == 1 }}"
-    # K8s
-    _r_wp_pods:     "{{ 'Running' in (_v_wp_pods.stdout | default('')) }}"
-    _r_ingress:     "{{ 'Running' in (_v_ingress_pods.stdout | default('')) }}"
-    _r_certmgr:     "{{ 'Running' in (_v_cm_pods.stdout | default('')) }}"
-    _r_noerror:     "{{ (_v_error_pods.stdout | default('') | trim) == '' }}"
-    # HTTPS – basic connectivity from external (uri module, delegate_to: localhost)
-    _r_https:       "{{ _v_https.status | default(0) == 200 }}"
-    _r_tls:         "{{ _v_https.status | default(0) == 200 }}"
-    # Headers – parsed from curl -I via 127.0.0.1 (all lowercase, safe from fail2ban)
-    _r_hsts:        "{{ 'strict-transport-security' in (_v_headers.stdout | default('')) }}"
-    _r_server:      "{{ 'nginx/' not in (_v_headers.stdout | default('')) }}"
-    _r_no_xpb:      "{{ 'x-powered-by' not in (_v_headers.stdout | default('')) }}"
-    # wp-login – curl stdout is the HTTP status code
-    _r_wp_login:    "{{ _v_wp_login.stdout | default('000') | trim | int == 200 }}"
-    # Security (curl via 127.0.0.1 → stdout is the HTTP status code)
-    _r_xmlrpc:      "{{ _v_xmlrpc.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
-    _r_env:         "{{ _v_env.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
-    _r_readme:      "{{ _v_readme.stdout | default('200') | trim | int in [400, 401, 403, 404, 444] }}"
-    _r_restapi:     "{{ (_v_rest_users.stdout.split('|')[1] | default('1') | int == 0) or (_v_rest_users.stdout.split('|')[0] | default('200') | int in [401, 403]) }}"
-    # Performance
-    _r_bbr:         "{{ (_v_bbr.stdout | default('') | trim) == 'bbr' }}"
-    _r_opcache:     "{{ (_v_opcache.stdout | default('') | trim) == 'yes' }}"
-    _r_mariadb:     "{{ (_v_mariadb.stdout | default('') | trim) == 'ok' }}"
+    _codes: "{{ dict(_v_paths.results | map(attribute='item') | zip(_v_paths.results | map(attribute='stdout'))) }}"
+    _site_ports: "{{ (_v_ports.stdout | default('') | trim).split() }}"
 
-    # Detail strings for the report
-    _d_f2b_jails:   "{{ _v_f2b_status.stdout | default('') | regex_search('Jail list:\\s*(.*)', '\\1') | default([], true) | first | default('?') | trim }}"
-    _d_wp_pods:     "{{ _v_wp_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
-    _d_ingress:     "{{ _v_ingress_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
-    _d_certmgr:     "{{ _v_cm_pods.stdout | default('?') | trim | replace('\n', '  ') }}"
-    _d_error_pods:  "{{ _v_error_pods.stdout | default('') | trim | replace('\n', ', ') | default('none', true) }}"
-    _d_server_hdr:  "{{ _v_headers.stdout | default('') | regex_search('server: ([^\r\n]+)', '\\1') | default([], true) | first | default('(not set)') }}"
-    _d_rest:        "{{ 'no username leak' if (_v_rest_users.stdout.split('|')[1] | default('1') | int == 0) else 'USERNAME LEAK – check!' }}"
-
-
-# =============================================================================
-# COUNT TOTAL PASS / FAIL
-# =============================================================================
-
-# _total_count is the length of the list above - keep both in sync
-# when adding a check (also add it to the report and the e-mail list).
-- name: Verify | Count passing checks
+- name: Verify | Build the check list
   ansible.builtin.set_fact:
-    _pass_count: >-
-      {{
-        [_r_nft_svc, _r_nft_tables, _r_nft_policy, _r_nft_f2b_sets, _r_f2b_effect, _r_data,
-         _r_f2b_svc, _r_f2b_jails, _r_k3s, _r_auditd, _r_selinux, _r_pod_selinux, _r_daemon_dom,
-         _r_wp_pods, _r_ingress, _r_certmgr, _r_noerror,
-         _r_https, _r_tls, _r_hsts, _r_server, _r_no_xpb, _r_wp_login,
-         _r_xmlrpc, _r_env, _r_readme, _r_restapi,
-         _r_bbr, _r_opcache, _r_mariadb]
-        | select | list | length
-      }}
-    _total_count: 30
+    _checks:
+      - ['nftables service', "{{ _v_nft_svc.stdout | default('') == 'active' }}", "{{ _v_nft_svc.stdout | default('?') }}"]
+      - ['nftables inet filter', "{{ 'inet filter' in (_v_nft_tables.stdout | default('')) }}", '']
+      - ['nftables policy drop', "{{ (_v_nft_policy.stdout | default('0') | trim | int) > 0 }}", '']
+      - ['fail2ban sets', "{{ (_v_nft_f2b_sets.stdout | default('0') | trim | int) == (fail2ban_nft_jails | length) * 2 }}", "{{ _v_nft_f2b_sets.stdout | default('?') }}"]
+      - ['fail2ban ban chain', "{{ (_v_f2b_effect.stdout_lines | default([]) | last | default('')) == 'RESULT 0' }}", "{{ _v_f2b_effect.stdout_lines | default([]) | reject('match', '.* ok$') | join('; ') }}"]
+      - ['fail2ban service', "{{ _v_f2b_svc.stdout | default('') == 'active' }}", '']
+      - ['nginx service', "{{ _v_nginx_svc.stdout | default('') == 'active' }}", '']
+      - ['auditd service', "{{ _v_auditd_svc.stdout | default('') == 'active' }}", '']
+      - ['SELinux enforcing', "{{ _v_selinux.stdout | default('') == 'Enforcing' }}", "{{ _v_selinux.stdout | default('?') }}"]
+      - ['daemons in their own domain', "{{ (_v_daemon_domains.stdout | default('?') | trim) == '' }}", "{{ _v_daemon_domains.stdout | default('?') | trim }}"]
+      - ['TCP BBR', "{{ (_v_bbr.stdout | default('') | trim) == 'bbr' }}", '']
+      - ['monitoring data and rules', "{{ (_v_data_presence.stdout_lines | default([]) | last | default('')) == 'RESULT 0' }}", "{{ _v_data_presence.stdout_lines | default([]) | select('match', 'FAIL') | join('; ') }}"]
+      - ['site answers 200', "{{ _codes['/'] == '200' }}", "{{ _codes['/'] }}"]
+      - ['unknown page 404', "{{ _codes['/no-such-page-at-all/'] == '404' }}", "{{ _codes['/no-such-page-at-all/'] }}"]
+      - ['no PHP executed', "{{ _codes['/index.php'] == '404' }}", "{{ _codes['/index.php'] }}"]
+      - ['no WordPress login', "{{ _codes['/wp-login.php'] == '404' }}", "{{ _codes['/wp-login.php'] }}"]
+      - ['hidden files blocked', "{{ _codes['/.git/config'] == '404' }}", "{{ _codes['/.git/config'] }}"]
+      - ['/.env blocked', "{{ _v_env.stdout | default('200') | trim | int in [403, 404] }}", "{{ _v_env.stdout | default('?') }}"]
+      - ['old feed redirects', "{{ _codes['/feed/'] == '301' }}", "{{ _codes['/feed/'] }}"]
+      - ['Grafana reachable', "{{ _codes['/grafana/login'] == '200' }}", "{{ _codes['/grafana/login'] }}"]
+      - ['port 80 redirects', "{{ (_v_http80.stdout | default('')).startswith('301') }}", "{{ _v_http80.stdout | default('?') }}"]
+      - ['HSTS header', "{{ 'strict-transport-security' in (_v_headers.stdout | default('')) }}", '']
+      - ['nginx version hidden', "{{ 'nginx/' not in (_v_headers.stdout | default('')) }}", '']
+      - ['no PHP, K3s or database installed', "{{ (_v_absent.stdout | default('x') | trim) == '' }}", "{{ _v_absent.stdout | default('?') | trim }}"]
+      - ['nginx egress blocked', "{{ (_v_egress.stdout | default('') | trim) == 'blocked' }}", "{{ _v_egress.stdout | default('?') | trim }}"]
+      - ['only 80, 443 and SSH public', "{{ _site_ports | difference(['80', '443', ansible_port | string, '10022']) | length == 0 }}", "{{ _site_ports | join(' ') }}"]
+      - ['certificate served', "{{ 'notAfter' in (_v_cert.stdout | default('')) }}", "{{ _v_cert.stdout | default('?') | replace('\n', ' ') }}"]
 
-
-# =============================================================================
-# COLORED REPORT
-# =============================================================================
-
-- name: Verify | Print report
+- name: Verify | Report
   ansible.builtin.debug:
-    msg: |
+    msg: "{{ _checks | map('join', ' | ') | list }}"
 
-      {{ _h }}╔══════════════════════════════════════════════════════════╗{{ _z }}
-      {{ _h }}║       DEPLOYMENT VERIFICATION  ·  blog.yml              ║{{ _z }}
-      {{ _h }}╚══════════════════════════════════════════════════════════╝{{ _z }}
-
-      {{ _h }}── System Services ───────────────────────────────────────────{{ _z }}
-        {{ _ok if _r_nft_svc | bool else _fail }}  nftables service             {{ 'active' if _r_nft_svc | bool else _r ~ 'INACTIVE' ~ _z }}
-        {{ _ok if _r_nft_tables | bool else _fail }}  nftables inet filter         {{ 'loaded' if _r_nft_tables | bool else _r ~ 'NOT LOADED' ~ _z }}
-        {{ _ok if _r_nft_policy | bool else _fail }}  nftables policy drop         {{ 'active' if _r_nft_policy | bool else _r ~ 'MISSING – firewall is open!' ~ _z }}
-        {{ _ok if _r_nft_f2b_sets | bool else _fail }}  nftables fail2ban sets       {{ (_v_nft_f2b_sets.stdout | default('0') | trim) ~ '/' ~ (fail2ban_nft_jails | length * 2) if _r_nft_f2b_sets | bool else _r ~ (_v_nft_f2b_sets.stdout | default('0') | trim) ~ '/' ~ (fail2ban_nft_jails | length * 2) ~ ' – some fail2ban bans have no effect!' ~ _z }}
-        {{ _ok if _r_f2b_effect | bool else _fail }}  fail2ban ban chain (test)    {{ 'filters, sets, unban, cross-jail ok' if _r_f2b_effect | bool else _r ~ (_v_f2b_effect.stdout_lines | default([]) | select('match', 'FAIL') | join('; ') | default('no result', true)) ~ _z }}
-        {{ _ok if _r_data | bool else _fail }}  monitoring data present      {{ 'metrics, targets, alert rules ok' if _r_data | bool else _y ~ (_v_data_presence.stdout_lines | default([]) | select('match', 'FAIL') | join('; ') | default('no result', true)) ~ _z }}
-        {{ _ok if _r_f2b_svc | bool else _fail }}  fail2ban service             {{ 'active' if _r_f2b_svc | bool else _r ~ 'INACTIVE' ~ _z }}
-        {{ _ok if _r_f2b_jails | bool else _fail }}  fail2ban jails               {{ _d_f2b_jails }}
-        {{ _ok if _r_k3s | bool else _fail }}  k3s service                  {{ 'active' if _r_k3s | bool else _r ~ 'INACTIVE' ~ _z }}
-        {{ _ok if _r_auditd | bool else _fail }}  auditd service               {{ 'active' if _r_auditd | bool else _r ~ 'INACTIVE' ~ _z }}
-        {{ _ok if _r_selinux | bool else _fail }}  SELinux                      {{ _v_selinux.stdout | default('?') }}
-        {{ _ok if _r_pod_selinux | bool else _fail }}  Pods confined (container_t)  {{ (_v_pod_selinux.stdout_lines | default(['0']) | first) ~ ' processes' if _r_pod_selinux | bool else _r ~ (_v_pod_selinux.stdout_lines | default(['?']) | reject('equalto', _v_pod_selinux.stdout_lines | default(['?']) | first) | join(', ') | default('no pod processes found', true)) ~ _z }}
-        {{ _ok if _r_daemon_dom | bool else _fail }}  host daemons own domain      {{ 'all in their domain' if _r_daemon_dom | bool else _r ~ (_v_daemon_domains.stdout_lines | default(['no result']) | join('; ')) ~ _z }}
-
-      {{ _h }}── Kubernetes Workloads ─────────────────────────────────────{{ _z }}
-        {{ _ok if _r_wp_pods | bool else _fail }}  wordpress namespace          {{ _d_wp_pods if _d_wp_pods != '?' else _r ~ 'no pods found' ~ _z }}
-        {{ _ok if _r_ingress | bool else _fail }}  ingress-nginx namespace      {{ _d_ingress if _d_ingress != '?' else _r ~ 'no pods found' ~ _z }}
-        {{ _ok if _r_certmgr | bool else _fail }}  cert-manager namespace       {{ _d_certmgr if _d_certmgr != '?' else _r ~ 'no pods found' ~ _z }}
-        {{ _ok if _r_noerror | bool else _fail }}  pods in error state          {{ _r ~ _d_error_pods ~ _z if not (_r_noerror | bool) else 'none' }}
-
-      {{ _h }}── HTTPS / WordPress ─────────────────────────────────────────{{ _z }}
-        {{ _ok if _r_https | bool else _fail }}  GET {{ blog_url }}/     HTTP {{ _v_https.status | default('TIMEOUT') }}
-        {{ _ok if _r_tls | bool else _fail }}  TLS certificate              {{ 'valid' if _r_tls | bool else _r ~ 'INVALID or expired!' ~ _z }}
-        {{ _ok if _r_hsts | bool else _fail }}  HSTS header                  {{ 'present' if _r_hsts | bool else _r ~ 'MISSING' ~ _z }}
-        {{ _ok if _r_server | bool else _fail }}  Server header (no leak)      {{ _d_server_hdr }}
-        {{ _ok if _r_no_xpb | bool else _fail }}  X-Powered-By                 {{ 'not present' if _r_no_xpb | bool else _r ~ 'FOUND – PHP version leaked!' ~ _z }}
-        {{ _ok if _r_wp_login | bool else _fail }}  /wp-login.php reachable      HTTP {{ _v_wp_login.stdout | default('TIMEOUT') | trim }}
-
-      {{ _h }}── Security / Blocking ───────────────────────────────────────{{ _z }}
-        {{ _ok if _r_xmlrpc | bool else _fail }}  /xmlrpc.php                  HTTP {{ _v_xmlrpc.stdout | default('?') | trim }}{{ '' if _r_xmlrpc | bool else _r ~ '  ← must be blocked!' ~ _z }}
-        {{ _ok if _r_env | bool else _fail }}  /.env                        HTTP {{ _v_env.stdout | default('?') | trim }}{{ '' if _r_env | bool else _r ~ '  ← must be blocked!' ~ _z }}
-        {{ _ok if _r_readme | bool else _fail }}  /readme.html                 HTTP {{ _v_readme.stdout | default('?') | trim }}{{ '' if _r_readme | bool else _r ~ '  ← must be blocked!' ~ _z }}
-        {{ _ok if _r_restapi | bool else _fail }}  REST API /wp/v2/users        {{ _d_rest }}
-
-      {{ _h }}── Performance ───────────────────────────────────────────────{{ _z }}
-        {{ _ok if _r_bbr | bool else _fail }}  TCP BBR                      {{ _v_bbr.stdout | default('?') | trim }}
-        {{ _ok if _r_opcache | bool else _fail }}  PHP OPcache                  {{ 'enabled' if _r_opcache | bool else _r ~ 'disabled' ~ _z }}
-        {{ _ok if _r_mariadb | bool else _fail }}  MariaDB connection           {{ 'ok' if _r_mariadb | bool else _r ~ 'FAILED' ~ _z }}
-
-      {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}
-      {% if _pass_count | int == _total_count | int %}
-        {{ _g }}{{ _b }}  RESULT:  {{ _pass_count }}/{{ _total_count }} checks passed  ✓  ALL OK{{ _z }}
-      {% else %}
-        {{ _r }}{{ _b }}  RESULT:  {{ _pass_count }}/{{ _total_count }} checks passed  ✗  {{ _total_count | int - _pass_count | int }} FAILED{{ _z }}
-      {% endif %}
-      {{ _h }}══════════════════════════════════════════════════════════════{{ _z }}
-
-
-# =============================================================================
-# EMAIL – notify once the playbook run has finished verifying the deployment
-# Mirrors nextcloud_verify: reuses the same msmtp relay + address (common_msmtp,
-# "email" host var) that rkhunter and dnf-automatic already send to. Placed
-# before the assert below so it fires even when a critical check fails - that's
-# the case you most want to hear about, not less.
-# =============================================================================
-
-- name: Verify | Build list of failed check names for the email body
+- name: Verify | Names of the failed checks
   ansible.builtin.set_fact:
-    _failed_checks_list: >-
-      {{
-        [
-          ['nftables service', _r_nft_svc], ['nftables inet filter', _r_nft_tables],
-          ['nftables policy drop', _r_nft_policy], ['nftables fail2ban sets', _r_nft_f2b_sets], ['fail2ban ban chain (test)', _r_f2b_effect], ['monitoring data present', _r_data],
-          ['fail2ban service', _r_f2b_svc], ['fail2ban jails', _r_f2b_jails],
-          ['k3s service', _r_k3s], ['auditd service', _r_auditd], ['SELinux', _r_selinux], ['pods confined (container_t)', _r_pod_selinux], ['host daemons own domain', _r_daemon_dom],
-          ['wordpress namespace pods', _r_wp_pods], ['ingress-nginx pods', _r_ingress],
-          ['cert-manager pods', _r_certmgr], ['pods in error state', _r_noerror],
-          ['HTTPS connectivity', _r_https], ['TLS certificate', _r_tls],
-          ['HSTS header', _r_hsts], ['Server header (no leak)', _r_server],
-          ['X-Powered-By hidden', _r_no_xpb], ['/wp-login.php reachable', _r_wp_login],
-          ['/xmlrpc.php blocked', _r_xmlrpc], ['/.env blocked', _r_env],
-          ['/readme.html blocked', _r_readme], ['REST API /wp/v2/users', _r_restapi],
-          ['TCP BBR', _r_bbr], ['PHP OPcache', _r_opcache], ['MariaDB connection', _r_mariadb]
-        ] | rejectattr('1') | map(attribute='0') | list
-      }}
+    _failed_checks_list: "{{ _checks | rejectattr('1', 'equalto', true) | rejectattr('1', 'equalto', 'True') | map('first') | list }}"
 
-# The Jinja {% if %}/{% for %} lines are rendered BEFORE the shell runs,
-# so the shell only sees plain echo lines. "mail" hands the text to msmtp
-# (common_msmtp). Not run in --check (shell tasks are skipped there).
-- name: Verify | Send deployment result email
+- name: Verify | Mail the result
   ansible.builtin.shell: |
     set -o pipefail
-    {
-      echo "Blog deployment on $(hostname -f) finished."
-      echo ""
-      echo "Result: {{ _pass_count }}/{{ _total_count }} checks passed."
-      {% if _failed_checks_list | length > 0 %}
-      echo ""
-      echo "Failed checks:"
-      {% for name in _failed_checks_list %}
-      echo "  - {{ name }}"
-      {% endfor %}
-      {% endif %}
-    } | mail -s "[$(hostname -f)] Blog deployment: {{ 'OK' if _pass_count | int == _total_count | int else 'WARNING' }} ({{ _pass_count }}/{{ _total_count }})" {{ email }}
+    printf 'Subject: [{{ inventory_hostname }}] blog deploy verified: {{ _checks | length - _failed_checks_list | length }}/{{ _checks | length }} ok\n\nFailed: {{ _failed_checks_list | join(", ") | default("none", true) }}\n' \
+      | /usr/sbin/sendmail {{ email }}
   changed_when: false
   failed_when: false
+  no_log: true
+  when: not ansible_check_mode
 
-
-# =============================================================================
-# ASSERT – kritische Checks müssen bestehen, sonst schlägt das Play fehl
-# =============================================================================
-
-# Only these checks are "critical": a failure here means the blog is
-# down or exposed. The others (BBR, OPcache, headers ...) show up in the
-# report and the mail, but do not stop the play.
-- name: Verify | Assert critical checks
+- name: Verify | All checks passed?
   ansible.builtin.assert:
-    that:
-      - _r_nft_svc | bool
-      - _r_nft_tables | bool
-      - _r_nft_policy | bool
-      - _r_f2b_effect | bool
-      - _r_k3s | bool
-      - _r_wp_pods | bool
-      - _r_ingress | bool
-      - _r_noerror | bool
-      - _r_https | bool
-      - _r_tls | bool
-      - _r_xmlrpc | bool
-      - _r_env | bool
+    that: _failed_checks_list | length == 0
     quiet: true
-    fail_msg: >-
-      {{ _r ~ _b }}Critical checks failed – see report above for details.{{ _z }}
-    success_msg: >-
-      {{ _g ~ _b }}All critical checks passed.{{ _z }}
-
-
-# -----------------------------------------------------------------------------
-# Optional Monit watchdog smoke-test (disruptive: sends real alert e-mails).
-# Off by default; enable per run with  -e monit_selftest=true
-# -----------------------------------------------------------------------------
-- name: Verify | Monit watchdog self-test (opt-in)
-  ansible.builtin.include_role:
-    name: common_monit
-    tasks_from: selftest
-  when: monit_selftest | default(false) | bool
+    fail_msg: "Failed checks: {{ _failed_checks_list | join(', ') }}"
+    success_msg: "All {{ _checks | length }} checks passed."

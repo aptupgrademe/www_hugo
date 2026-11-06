@@ -1,0 +1,79 @@
+---
+# Same pattern as node_exporter: a pinned release, checked by its SHA-256.
+- name: Exporter | System user
+  ansible.builtin.user:
+    name: nginx_exporter
+    system: true
+    shell: /sbin/nologin
+    create_home: false
+
+- name: Exporter | Installed version
+  ansible.builtin.command: /usr/local/bin/nginx-prometheus-exporter --version
+  register: _ngx_exp_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Exporter | Install the pinned release
+  when: nginx_exporter_version not in (_ngx_exp_version.stdout | default('') + _ngx_exp_version.stderr | default(''))
+  block:
+    - name: Exporter | Download
+      ansible.builtin.get_url:
+        url: "https://github.com/nginx/nginx-prometheus-exporter/releases/download/v{{ nginx_exporter_version }}/nginx-prometheus-exporter_{{ nginx_exporter_version }}_linux_amd64.tar.gz"
+        dest: "/tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz"
+        checksum: "sha256:{{ nginx_exporter_sha256 }}"
+        mode: "0600"
+    - name: Exporter | Extract the binary
+      ansible.builtin.unarchive:
+        src: "/tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        include: [nginx-prometheus-exporter]
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart nginx exporter
+    - name: Exporter | Label the binary
+      ansible.builtin.command: restorecon /usr/local/bin/nginx-prometheus-exporter
+      changed_when: false
+    - name: Exporter | Remove the download
+      ansible.builtin.file:
+        path: "/tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz"
+        state: absent
+
+- name: Exporter | Service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nginx_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=nginx Prometheus exporter
+      After=nginx.service
+
+      [Service]
+      User=nginx_exporter
+      ExecStart=/usr/local/bin/nginx-prometheus-exporter --nginx.scrape-uri=http://127.0.0.1:8008/stub_status --web.listen-address=127.0.0.1:9113
+      Restart=on-failure
+      NoNewPrivileges=yes
+      ProtectSystem=strict
+      ProtectHome=yes
+      PrivateTmp=yes
+      PrivateDevices=yes
+      ProtectKernelTunables=yes
+      ProtectKernelModules=yes
+      ProtectControlGroups=yes
+      RestrictAddressFamilies=AF_INET AF_INET6
+      CapabilityBoundingSet=
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Restart nginx exporter
+
+- name: Exporter | Enable and start
+  ansible.builtin.systemd_service:
+    name: nginx_exporter
+    enabled: true
+    state: started
+    daemon_reload: true

@@ -6,7 +6,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Reads the ingress logs, writes one line of counts - no IPs - per day.
+# Reads the nginx logs, writes one line of counts - no IPs - per day.
 ExecStart=/bin/sh -c '/usr/local/sbin/visitor-stats --date "$(date -d yesterday +%%F)" --record {{ visitor_stats_dir }}/daily.jsonl{% for net in visitor_stats_exclude %} --exclude {{ net }}{% endfor %}'
 Nice=10
 IOSchedulingClass=idle

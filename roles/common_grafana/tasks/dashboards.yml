@@ -167,21 +167,21 @@
 
 
     # -----------------------------------------------------------------------------
-    # Dashboard 7362 – MySQL Overview (mysqld_exporter / MariaDB)
+    # Dashboard 12708 – NGINX exporter
     # -----------------------------------------------------------------------------
-    - name: Grafana | Download dashboard 7362 from Grafana.com
+    - name: Grafana | Download dashboard 12708 from Grafana.com
       ansible.builtin.get_url:
-        url: "https://grafana.com/api/dashboards/7362/revisions/latest/download"
-        dest: /tmp/grafana-dashboard-7362.json
+        url: "https://grafana.com/api/dashboards/12708/revisions/latest/download"
+        dest: /tmp/grafana-dashboard-12708.json
         mode: "0644"
         force: false
 
-    - name: Grafana | Read dashboard JSON 7362 from remote host
+    - name: Grafana | Read dashboard JSON 12708 from remote host
       ansible.builtin.slurp:
-        src: /tmp/grafana-dashboard-7362.json
-      register: dashboard_7362_raw
+        src: /tmp/grafana-dashboard-12708.json
+      register: dashboard_12708_raw
 
-    - name: Grafana | Import dashboard 7362 via Grafana API
+    - name: Grafana | Import dashboard 12708 via Grafana API
       ansible.builtin.uri:
         url: "http://127.0.0.1:3000/api/dashboards/import"
         method: POST
@@ -190,7 +190,7 @@
         force_basic_auth: true
         body_format: json
         body:
-          dashboard: "{{ dashboard_7362_raw.content | b64decode | from_json | combine({'uid': 'MQWgroiiz'}) }}"
+          dashboard: "{{ dashboard_12708_raw.content | b64decode | from_json | combine({'uid': 'MQWgroiiz'}) }}"
           overwrite: true
           inputs:
             - name: "DS_PROMETHEUS"
@@ -204,79 +204,5 @@
       no_log: true
 
 
-    # -----------------------------------------------------------------------------
-    # Dashboard 25545 – PHP-FPM (php-fpm_exporter on a plain host)
-    # -----------------------------------------------------------------------------
-    # Replaced 4912 on 2026-10-26: 4912 was built for hipages' own cluster and
-    # filters every query on labels we do not have (app, hip_new,
-    # kubernetes_namespace, pod_name, container_name="fpm") - every panel
-    # showed N/A. 25545 uses the same exporter metrics with job/instance only;
-    # all of its queries return data here. Pinned to revision 1 (single
-    # author), imported under the old uid so the broken dashboard is replaced.
-    - name: Grafana | Download dashboard 25545 from Grafana.com
-      ansible.builtin.get_url:
-        url: "https://grafana.com/api/dashboards/25545/revisions/1/download"
-        dest: /tmp/grafana-dashboard-25545.json
-        mode: "0644"
-        force: false
-
-    - name: Grafana | Remove the old dashboard 4912 download
-      ansible.builtin.file:
-        path: /tmp/grafana-dashboard-4912.json
-        state: absent
-
-    - name: Grafana | Read dashboard JSON 25545 from remote host
-      ansible.builtin.slurp:
-        src: /tmp/grafana-dashboard-25545.json
-      register: dashboard_25545_raw
-
-    - name: Grafana | Import dashboard 25545 via Grafana API
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:3000/api/dashboards/import"
-        method: POST
-        user: "{{ grafana_basic_auth_user }}"
-        password: "{{ grafana_admin_pass }}"
-        force_basic_auth: true
-        body_format: json
-        body:
-          dashboard: >-
-            {{ dashboard_25545_raw.content | b64decode | from_json
-               | combine({'uid': 'f67a223d-b1b6-4f5a-8c5d-233a7a8aeb98', 'title': 'PHP-FPM', 'id': none}) }}
-          overwrite: true
-          inputs:
-            - name: "DS_PROMETHEUS"
-              type: "datasource"
-              pluginId: "prometheus"
-              value: "Prometheus"
-          folderId: 0
-        status_code: 200
-      # The whole dashboard JSON would otherwise be logged to the target's syslog
-      # with every run ("message too long" from rsyslog, found 2026-10-02).
-      no_log: true
-
-
-    # -----------------------------------------------------------------------------
-    # Container-Ressourcen – our own dashboard (files/container-resources.json)
-    # -----------------------------------------------------------------------------
-    # Data from common_kube_metrics (cAdvisor + kube-state-metrics): CPU and
-    # memory per container against its limit, CPU throttling, restarts, OOM
-    # kills, last termination reason. Lives in the repo instead of
-    # grafana.com, so there is no download; the fixed uid is in the file.
-    - name: Grafana | Import dashboard Container-Ressourcen
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:3000/api/dashboards/db"
-        method: POST
-        user: "{{ grafana_basic_auth_user }}"
-        password: "{{ grafana_admin_pass }}"
-        force_basic_auth: true
-        body_format: json
-        body:
-          dashboard: "{{ lookup('ansible.builtin.file', 'container-resources.json') | from_json }}"
-          overwrite: true
-          folderId: 0
-        status_code: 200
-      no_log: true
-
-# Note: Grafana is proxied via K3s Ingress at /grafana/
+# Note: Grafana is proxied by nginx (blog_web) at /grafana/
 # Access control is handled by Grafana's own admin_password (set above).
-# No host-level Nginx or htpasswd file needed.

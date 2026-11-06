@@ -8,7 +8,7 @@
 # defaults/ = lowest-priority role variables: every threshold below can be
 # overridden per host in its host_vars without touching the role.
 
-# Where alerts go (same address as rkhunter/ClamAV). From the host vault.
+# Where alerts go (same address as rkhunter). From the host vault.
 monit_mail: "{{ email }}"
 
 # --- Daemon timing ---
@@ -21,37 +21,32 @@ monit_mem_pct_max: 90            # alert when memory usage exceeds this %
 monit_loadavg_max: 8             # alert when 5-min load average exceeds this
 
 # --- TLS certificate expiry ---
-# cert-manager renews at 30 days remaining, so a certificate still this close
+# certbot renews at 30 days remaining, so a certificate still this close
 # to expiry means renewal has been failing for over a week. Deliberately well
 # above zero: the point is to alert while there is still time to fix it, not
 # to report the outage after the fact.
 monit_cert_min_days: 21
 
-# Nextcloud hosts: alert when the last successful (pulled) backup is older
-# than this many days - see checks.conf.j2 (nc_backup).
+# Alert when the last successful (pulled) backup is older
+# than this many days - see checks.conf.j2 (blog_backup).
 monit_backup_max_days: 3
 
 # --- Services checked via `systemctl is-active` (alert on state change) ---
 # Only those that actually exist on the host are templated in (see tasks), so
-# the same role is safe on both blog and nextcloud hosts. fail2ban is handled
+# a service that is not installed never alerts. fail2ban is handled
 # separately with auto-restart and is NOT in this list.
 # (nftables is intentionally NOT here - the firewall is checked by
 #  monit-check-firewall.sh, which verifies the ruleset is actually
 #  default-drop, a stronger signal than the oneshot unit being "active".)
 monit_candidate_services:
   - sshd
-  - k3s
+  - nginx
+  - nginx_exporter
   - node_exporter
   - prometheus
   - grafana-server
-  - mysqld_exporter
   - loki
   - alloy
-  # Host database and cache of the Nextcloud stack (added 2026-10-20). On the
-  # blog both run as pods - no such units, so they are skipped there, and the
-  # pod check (monit-check-pods.sh) covers them instead.
-  - mariadb
-  - redis
 
 # --- Mail relay for Monit's own SMTP ---
 # Reuses the same relay/credentials as msmtp (from the host vault: mail_smtphost

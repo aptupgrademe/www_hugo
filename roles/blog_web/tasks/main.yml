@@ -1,0 +1,349 @@
+---
+# =============================================================================
+# Role: blog_web
+# Purpose: The whole web server of the static blog: nginx on the host, TLS, the
+#          reverse proxy for Grafana, the deploy path and the nginx exporter.
+#          There is no PHP, no database and no login on this site.
+# =============================================================================
+- name: Web | Install helpers (nginx comes with blog_packages)
+  ansible.builtin.dnf:
+    name:
+      - openssl
+      - rsync
+    state: present
+
+# nginx talks to Grafana on 127.0.0.1:3000. Everything else it serves is a file.
+- name: Web | Allow nginx to proxy to Grafana (SELinux)
+  ansible.posix.seboolean:
+    name: httpd_can_network_connect
+    state: true
+    persistent: true
+
+- name: Web | Deploy user
+  ansible.builtin.user:
+    name: "{{ blog_web_deploy_user }}"
+    system: true
+    shell: /bin/bash
+    create_home: true
+    password: "!"
+
+- name: Web | Create directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - {path: "{{ blog_web_tls_dir }}", mode: "0750", group: nginx}
+    - {path: "{{ blog_web_geo_file | dirname }}"}
+    - {path: "{{ blog_web_acme_webroot }}"}
+    - {path: "{{ blog_web_root }}", owner: "{{ blog_web_deploy_user }}", group: "{{ blog_web_deploy_user }}"}
+
+- name: Web | Directories of the deploy path
+  ansible.builtin.file:
+    path: "{{ blog_web_root }}/{{ item }}"
+    state: directory
+    owner: "{{ blog_web_deploy_user }}"
+    group: "{{ blog_web_deploy_user }}"
+    mode: "0755"
+  loop: [incoming, releases]
+
+# restorecon -R follows nothing and is cheap on a few thousand files; the new
+# release directories inherit the type from their parent.
+- name: Web | SELinux type of the site
+  community.general.sefcontext:
+    target: "{{ item.target }}"
+    setype: "{{ item.setype }}"
+    state: present
+  loop:
+    - {target: "{{ blog_web_root }}(/.*)?", setype: httpd_sys_content_t}
+    - {target: "{{ blog_web_acme_webroot }}(/.*)?", setype: httpd_sys_content_t}
+  register: _web_fcontext
+
+- name: Web | Apply the SELinux type
+  ansible.builtin.command: "restorecon -R {{ blog_web_root }} {{ blog_web_acme_webroot }}"
+  when: _web_fcontext is changed
+  changed_when: true
+
+- name: Web | Deploy command (the only thing the deploy key can run)
+  ansible.builtin.template:
+    src: blog-deploy.j2
+    dest: /usr/local/sbin/blog-deploy
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Web | Deploy key, restricted to that command
+  ansible.posix.authorized_key:
+    user: "{{ blog_web_deploy_user }}"
+    key: "{{ blog_web_deploy_pubkey }}"
+    key_options: 'restrict,command="/usr/local/sbin/blog-deploy"'
+    exclusive: true
+  when: blog_web_deploy_pubkey | length > 0
+
+# A first release so that nginx has something to serve before the first deploy.
+- name: Web | Is there a release yet?
+  ansible.builtin.stat:
+    path: "{{ blog_web_root }}/current"
+  register: _web_current
+
+- name: Web | Placeholder release
+  when: not _web_current.stat.exists
+  block:
+    - name: Web | Placeholder directory
+      ansible.builtin.file:
+        path: "{{ blog_web_root }}/releases/placeholder"
+        state: directory
+        owner: "{{ blog_web_deploy_user }}"
+        group: "{{ blog_web_deploy_user }}"
+        mode: "0755"
+    - name: Web | Placeholder page
+      ansible.builtin.copy:
+        dest: "{{ blog_web_root }}/releases/placeholder/index.html"
+        content: "<!doctype html><title>Maintenance</title><p>This site is being set up.</p>\n"
+        owner: "{{ blog_web_deploy_user }}"
+        group: "{{ blog_web_deploy_user }}"
+        mode: "0644"
+    - name: Web | Point current at the placeholder
+      ansible.builtin.file:
+        src: "{{ blog_web_root }}/releases/placeholder"
+        dest: "{{ blog_web_root }}/current"
+        state: link
+        owner: "{{ blog_web_deploy_user }}"
+        group: "{{ blog_web_deploy_user }}"
+
+# -----------------------------------------------------------------------------
+# TLS: a self-signed certificate first, so nginx always starts. ACME replaces
+# it afterwards by moving the symlinks; a failed issuance leaves a running site.
+# -----------------------------------------------------------------------------
+- name: Web | Is a certificate linked yet?
+  ansible.builtin.stat:
+    path: "{{ blog_web_tls_dir }}/current.crt"
+  register: _web_cert
+
+- name: Web | Self-signed certificate
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - ec
+      - -pkeyopt
+      - ec_paramgen_curve:P-256
+      - -nodes
+      - -days
+      - "30"
+      - -subj
+      - "/CN={{ blog_web_tls_names[0] }}"
+      - -addext
+      - "subjectAltName={{ blog_web_tls_names | map('regex_replace', '^', 'DNS:') | join(',') }}"
+      - -keyout
+      - "{{ blog_web_tls_dir }}/selfsigned.key"
+      - -out
+      - "{{ blog_web_tls_dir }}/selfsigned.crt"
+    creates: "{{ blog_web_tls_dir }}/selfsigned.crt"
+
+- name: Web | Permissions of the self-signed key
+  ansible.builtin.file:
+    path: "{{ blog_web_tls_dir }}/selfsigned.key"
+    owner: root
+    group: nginx
+    mode: "0640"
+
+- name: Web | Link the self-signed certificate
+  ansible.builtin.file:
+    src: "{{ blog_web_tls_dir }}/selfsigned.{{ item.src }}"
+    dest: "{{ blog_web_tls_dir }}/current.{{ item.src }}"
+    state: link
+  loop: [{src: crt}, {src: key}]
+  when: not _web_cert.stat.exists
+
+# An empty geo file means: nothing allowed. Only used when the filter is on, and
+# ssh-geo-update (common_firewall) writes the real list.
+- name: Web | Country list exists
+  ansible.builtin.file:
+    path: "{{ blog_web_geo_file }}"
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+    mode: "0644"
+
+- name: Web | Security headers
+  ansible.builtin.copy:
+    dest: /etc/nginx/blog-headers.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "same-origin" always;
+      add_header Cross-Origin-Opener-Policy "same-origin" always;
+      add_header X-Permitted-Cross-Domain-Policies "none" always;
+      add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+      add_header Content-Security-Policy-Report-Only "{{ blog_web_csp_report_only }}" always;
+      {% if blog_web_http3 | bool %}add_header Alt-Svc 'h3=":443"; ma=86400' always;{% endif %}
+  notify: Reload nginx
+
+- name: Web | Proxy settings for Grafana
+  ansible.builtin.copy:
+    dest: /etc/nginx/blog-proxy.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $connection_upgrade;
+      proxy_read_timeout 300s;
+      include /etc/nginx/blog-headers.conf;
+  notify: Reload nginx
+
+- name: Web | SELinux module for quic_bpf
+  when: blog_web_http3 | bool
+  block:
+    - name: Web | Build tools for the module
+      ansible.builtin.dnf:
+        name: [selinux-policy-devel, make]
+        state: present
+    - name: Web | Module directory
+      ansible.builtin.file:
+        path: /etc/selinux/local/nginx
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+    - name: Web | Module source
+      ansible.builtin.copy:
+        src: homelab_nginx_bpf.te
+        dest: /etc/selinux/local/nginx/homelab_nginx_bpf.te
+        owner: root
+        group: root
+        mode: "0600"
+      register: _web_bpf_te
+    - name: Web | Is the module loaded?
+      ansible.builtin.shell: |
+        set -o pipefail
+        semodule -l | grep -qx homelab_nginx_bpf
+      register: _web_bpf_loaded
+      changed_when: false
+      failed_when: false
+      check_mode: false
+    - name: Web | Build and load the module
+      ansible.builtin.shell: |
+        set -e
+        cd /etc/selinux/local/nginx
+        make -f /usr/share/selinux/devel/Makefile homelab_nginx_bpf.pp >/dev/null
+        semodule -i homelab_nginx_bpf.pp
+        rm -rf tmp
+      when: _web_bpf_te is changed or _web_bpf_loaded.rc != 0
+      changed_when: true
+
+- name: Web | Main configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nginx -t -c %s
+  notify: Reload nginx
+
+- name: Web | Enable and start nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Web | Apply a changed configuration before asking for a certificate
+  ansible.builtin.meta: flush_handlers
+
+- name: Web | ACME certificate
+  ansible.builtin.import_tasks: acme.yml
+  when: blog_web_acme_enabled | bool
+
+- name: Web | Hostnames for the certificate check of Monit
+  ansible.builtin.copy:
+    dest: "{{ item.dest }}"
+    content: "{{ item.content }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {dest: /etc/monit-tls-hosts, content: "{{ blog_web_tls_names | join(' ') }}"}
+    - {dest: /etc/monit-tls-selfsigned-ok, content: "{{ 'no' if blog_web_acme_enabled | bool else 'yes' }}"}
+  loop_control:
+    label: "{{ item.dest }}"
+
+# What K3s pods get by their manifest, here by a drop-in: fewer privileges, a memory limit, a read-only
+# system, and keeping the site running after a crash. CapabilityBoundingSet keeps
+# what the master needs for binding 80/443 and changing to the nginx user.
+# Check after every change: ps -eZ | grep nginx must show httpd_t (see CLAUDE.md).
+- name: Web | Sandbox of the nginx service
+  block:
+    - name: Web | Drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/nginx.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+    - name: Web | Drop-in
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/nginx.service.d/hardening.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Service]
+          Restart=on-failure
+          RestartSec=5s
+          MemoryMax=512M
+          TasksMax=512
+          LimitNOFILE=65535
+          CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_KILL{{ ' CAP_BPF CAP_PERFMON CAP_NET_ADMIN' if blog_web_http3 | bool else '' }}
+          ProtectSystem=full
+          ProtectHome=yes
+          PrivateTmp=yes
+          PrivateDevices=yes
+          ProtectKernelModules=yes
+          ProtectKernelLogs=yes
+          ProtectControlGroups=yes
+          ProtectClock=yes
+          ProtectHostname=yes
+          RestrictRealtime=yes
+          RestrictSUIDSGID=yes
+          LockPersonality=yes
+          RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+      notify: Restart nginx
+
+- name: Web | Keep the access log 14 days, compressed
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/nginx
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      /var/log/nginx/*.log {
+          daily
+          rotate 14
+          missingok
+          notifempty
+          compress
+          delaycompress
+          dateext
+          sharedscripts
+          postrotate
+              /bin/kill -USR1 $(cat /run/nginx.pid 2>/dev/null) 2>/dev/null || true
+          endscript
+      }
+
+- name: Web | Exporter
+  ansible.builtin.import_tasks: exporter.yml

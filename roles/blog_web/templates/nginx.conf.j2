@@ -1,0 +1,181 @@
+# {{ ansible_managed }}
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /run/nginx.pid;
+# After a reload, old workers keep their QUIC sockets until their last connection
+# ends, and new QUIC connections can land on them and hang (nginx issue 1937).
+# quic_bpf routes each packet to the worker that owns the connection; it needs
+# nginx 1.31+ (see blog_packages for the measurements). The timeout ends old workers soon.
+{% if blog_web_http3 | bool %}
+quic_bpf on;
+{% endif %}
+worker_shutdown_timeout 30s;
+
+events {
+    worker_connections 4096;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"';
+    access_log /var/log/nginx/access.log main;
+
+    sendfile on;
+    tcp_nopush on;
+    keepalive_timeout 65;
+    server_tokens off;
+    absolute_redirect off;
+    client_max_body_size 1m;
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/json application/xml application/rss+xml image/svg+xml application/wasm;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    # TLS 1.2: forward secrecy and AEAD only (testssl flagged the CBC defaults, LUCKY13).
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_ecdh_curve X25519MLKEM768:X25519:prime256v1:secp384r1;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+    ssl_certificate     {{ blog_web_tls_dir }}/current.crt;
+    ssl_certificate_key {{ blog_web_tls_dir }}/current.key;
+
+{% if blog_web_http3 | bool %}
+    # The two brakes found in 2026-11: the per-stream buffer limited throughput to
+    # 64 KB per round trip, and the socket buffers overflowed (see listen below).
+    http3_stream_buffer_size 1m;
+    quic_gso on;
+
+{% endif %}
+    limit_req_zone $binary_remote_addr zone=grafana_login:10m rate=5r/s;
+
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    # One week for pages would hide fixes: pages revalidate, hashed assets stay.
+    map $uri $blog_cache {
+        default                                         "no-cache";
+        "~*^/(css|js)/.*\.[0-9a-f]{32,}\."              "public, max-age=31536000, immutable";
+        ~*^/fonts/                                      "public, max-age=31536000, immutable";
+        ~*^/pagefind/                                   "no-cache";
+        ~*\.(webp|jpe?g|png|gif|svg|avif|ico|mp4)$      "public, max-age=2592000";
+    }
+
+{% if fw_ssh_geo_countries | default([]) | length > 0 %}
+    # /grafana only from the SSH country list (common_firewall, ssh-geo-update).
+    geo $admin_allowed {
+        default 0;
+        127.0.0.1/32 1;
+        include {{ blog_web_geo_file }};
+    }
+{% else %}
+    geo $admin_allowed {
+        default 1;
+    }
+{% endif %}
+
+    # Metrics for the exporter, local only.
+    server {
+        listen 127.0.0.1:8008;  # a port SELinux allows httpd_t to bind
+        access_log off;
+        location = /stub_status {
+            stub_status;
+        }
+        location / {
+            return 404;
+        }
+    }
+
+    # Port 80: certificate challenges, everything else moves to HTTPS.
+    server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+        server_name _;
+        location ^~ /.well-known/acme-challenge/ {
+            root {{ blog_web_acme_webroot }};
+            default_type text/plain;
+        }
+        location / {
+            return 301 https://{{ blog_web_tls_names[0] }}$request_uri;
+        }
+    }
+
+{% if blog_web_redirect_names | length > 0 %}
+    server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+{% if blog_web_http3 | bool %}
+        listen 443 quic;
+        listen [::]:443 quic;
+{% endif %}
+        http2 on;
+        server_name {{ blog_web_redirect_names | join(' ') }};
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+        return 301 https://{{ blog_web_tls_names[0] }}$request_uri;
+    }
+
+{% endif %}
+    server {
+        listen 443 ssl default_server;
+        listen [::]:443 ssl default_server;
+{% if blog_web_http3 | bool %}
+        # reuseport only once per address and port.
+        listen 443 quic reuseport default_server rcvbuf=4m sndbuf=4m;
+        listen [::]:443 quic reuseport default_server rcvbuf=4m sndbuf=4m;
+{% endif %}
+        http2 on;
+        server_name {{ blog_web_tls_names[0] }};
+
+        root {{ blog_web_root }}/current;
+        index index.html;
+        error_page 404 /404.html;
+
+        # add_header is not inherited once a location has its own, so every
+        # header sits in one file that each location includes.
+        include /etc/nginx/blog-headers.conf;
+
+        location = /404.html {
+            internal;
+            include /etc/nginx/blog-headers.conf;
+        }
+
+        # Old WordPress addresses
+        location = /feed/ { return 301 /index.xml; }
+        location = /de/feed/ { return 301 /de/index.xml; }
+        location = /fr/feed/ { return 301 /fr/index.xml; }
+        location = /es/feed/ { return 301 /es/index.xml; }
+
+        # Hidden files never exist on this site.
+        location ~ /\.(?!well-known/) {
+            return 404;
+        }
+
+        location / {
+            try_files $uri $uri/ =404;
+            add_header Cache-Control $blog_cache always;
+            include /etc/nginx/blog-headers.conf;
+        }
+
+        location = /grafana/login {
+            if ($admin_allowed = 0) { return 403; }
+            limit_req zone=grafana_login burst=10 nodelay;
+            proxy_pass http://127.0.0.1:3000;
+            include /etc/nginx/blog-proxy.conf;
+        }
+
+        location /grafana/ {
+            if ($admin_allowed = 0) { return 403; }
+            proxy_pass http://127.0.0.1:3000;
+            include /etc/nginx/blog-proxy.conf;
+        }
+    }
+}

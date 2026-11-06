@@ -1,0 +1,42 @@
+---
+# HTTP-01 over the running nginx. The certbot package brings its renew timer;
+# the deploy hook reloads nginx after every renewal.
+- name: ACME | Install certbot
+  ansible.builtin.dnf:
+    name: certbot
+    state: present
+
+- name: ACME | Reload nginx after a renewal
+  ansible.builtin.copy:
+    dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+    content: |
+      #!/bin/sh
+      exec systemctl reload nginx
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: ACME | Request the certificate
+  ansible.builtin.command:
+    argv: "{{ ['certbot', 'certonly', '--webroot', '-w', blog_web_acme_webroot, '--non-interactive', '--agree-tos', '--no-eff-email',
+               '-m', blog_web_acme_email, '--key-type', 'ecdsa', '--elliptic-curve', 'secp256r1', '--keep-until-expiring', '--cert-name', blog_web_tls_names[0]]
+              + (blog_web_tls_names | map('regex_replace', '^', '-d ') | map('split', ' ') | flatten) }}"
+    creates: "/etc/letsencrypt/live/{{ blog_web_tls_names[0] }}/fullchain.pem"
+  register: _acme_request
+
+- name: ACME | Link the certificate
+  ansible.builtin.file:
+    src: "/etc/letsencrypt/live/{{ blog_web_tls_names[0] }}/{{ item.src }}"
+    dest: "{{ blog_web_tls_dir }}/current.{{ item.dest }}"
+    state: link
+    force: true
+  loop:
+    - {src: fullchain.pem, dest: crt}
+    - {src: privkey.pem, dest: key}
+  notify: Reload nginx
+
+- name: ACME | Renewal timer on
+  ansible.builtin.systemd_service:
+    name: certbot-renew.timer
+    enabled: true
+    state: started

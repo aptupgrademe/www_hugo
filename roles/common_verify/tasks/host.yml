@@ -1,19 +1,18 @@
 ---
 # =============================================================================
-# common_verify: host checks (nftables, fail2ban, K3s, auditd, SELinux, TCP BBR)
-# Shared by blog_verify and nextcloud_verify (imported from their checks.yml).
+# common_verify: host checks (nftables, fail2ban, auditd, SELinux, TCP BBR)
+# Imported from blog_verify (its checks.yml).
 # Read-only except the fail2ban effect test: every check registers its
 # result (_v_*) with failed_when: false;
 # the calling role turns them into the report and the final assert.
 # =============================================================================
 #
 # How this file is used: common_verify is never listed in a playbook. It is
-# a "library role" - blog_verify and nextcloud_verify pull its task files in
+# a "library role" - blog_verify pulls its task files in
 # with
 #     ansible.builtin.import_role:
 #       name: common_verify
 #       tasks_from: host        # = tasks/host.yml
-# so the same checks run on both stacks without being written twice.
 # tasks_from picks a file other than tasks/main.yml (this role has none).
 #
 # The pattern of every task here ("collect, judge later"):
@@ -104,9 +103,9 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
-- name: Verify | k3s – service active?
-  ansible.builtin.command: systemctl is-active k3s
-  register: _v_k3s_svc
+- name: Verify | nginx – service active?
+  ansible.builtin.command: systemctl is-active nginx
+  register: _v_nginx_svc
   changed_when: false
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
@@ -125,33 +124,12 @@
   check_mode: false   # read-only query, also runs in --check
   failed_when: false
 
-# Enforcing is not enough: a process can still run in the wrong domain (found
-# twice, see CLAUDE.md). Every process in a pod cgroup must be container_t.
-# Output: the number of pod processes, then one line per process that is not
-# ("<type> <command>"). Reads /proc only.
-- name: Verify | SELinux – every pod process container_t?
-  ansible.builtin.shell: |
-    set -o pipefail
-    n=0; bad=''
-    for d in /proc/[0-9]*; do
-      grep -q kubepods "$d/cgroup" 2>/dev/null || continue
-      t=$(cut -d: -f3 "$d/attr/current" 2>/dev/null | tr -d '\0')
-      [ -n "$t" ] || continue
-      n=$((n + 1))
-      [ "$t" = container_t ] || bad="$bad$t $(tr -d '\0' < "$d/comm")\n"
-    done
-    echo "$n"; printf "%b" "$bad" | sort -u
-  register: _v_pod_selinux
-  changed_when: false
-  check_mode: false   # read-only query, also runs in --check
-  failed_when: false
-
 # Every host daemon in its own domain (verify_daemon_domains, defaults).
 # Output: one line per daemon that runs in another domain or not at all.
 - name: Verify | SELinux – host daemons in their own domain?
   ansible.builtin.shell: |
     set -o pipefail
-    {% for d in verify_daemon_domains | selectattr('stack', 'in', ['all', stack]) %}
+    {% for d in verify_daemon_domains %}
     t=$(ps -C {{ d.comm }} -o label= 2>/dev/null | cut -d: -f3 | sort -u | tr '\n' ' ')
     [ "$t" = "{{ d.domain }} " ] || echo "{{ d.comm }}: ${t:-not running} (expected {{ d.domain }})"
     {% endfor %}

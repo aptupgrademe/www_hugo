@@ -2,15 +2,15 @@
 # =============================================================================
 # Role: blog_visitor_stats
 # Purpose: Daily, anonymous visitor trend for the blog - computed ON the host
-#          from the nginx-ingress access log, so visitor IPs never leave it
-#          (GDPR). k3s keeps only ~4 days of container logs, so without a
+#          from the nginx access log, so visitor IPs never leave it (GDPR).
+#          nginx keeps 14 days of logs, so without a
 #          daily snapshot there is no way to answer "is the blog read more
 #          than last month" or "do more readers come from search engines".
 #
 #          - /usr/local/sbin/visitor-stats   = scripts/analytics/visitor-stats.py
 #          - visitor-stats-daily.timer       one JSON line of counts per day
 #          - visitor-stats-geoip.timer       monthly DB-IP country database
-#            (the EL9 GeoLite2 package is frozen at 2019-12)
+#            (the distro GeoLite2 package is frozen at 2019-12)
 #
 # Read the trend:  visitor-stats --trend /var/lib/visitor-stats/daily.jsonl
 # =============================================================================

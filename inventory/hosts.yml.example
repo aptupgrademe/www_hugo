@@ -1,14 +1,10 @@
+---
 # Topology only: which host belongs to which group. The address lives in
 # host_vars/<host>/vars.yml (server_ipv4, with ansible_host: "{{ server_ipv4 }}"),
 # so it is kept in exactly one place.
 all:
   children:
-    blog:                         # WordPress servers
+    blog:
       hosts:
         www.example.de: {}        # rename to your actual hostname
         test: {}
-    nextcloud:                    # Nextcloud servers
-      hosts:
-        instance1: {}             # rename to your actual instance name
-        instance2: {}
-        test: {}                  # shared with the blog test server

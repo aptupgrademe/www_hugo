@@ -2,14 +2,14 @@
 # =============================================================================
 # common_verify: HTTPS reachability, response headers, /.env blocked
 # Inputs: verify_url (public https URL), verify_hostname (its host name).
-# Shared by blog_verify and nextcloud_verify (imported from their checks.yml).
+# Imported from blog_verify (its checks.yml).
 # Read-only: every check registers its result (_v_*) with failed_when: false;
 # the calling role turns them into the report and the final assert.
 # =============================================================================
 #
 # Same "collect, judge later" pattern as host.yml (see there). The two
 # inputs verify_url and verify_hostname are passed by the calling role
-# (blog_verify / nextcloud_verify) as "vars:" on its import_role task.
+# (blog_verify) as "vars:" on its import_role task.
 
 # uri runs on the controller (delegate_to: localhost) - a request from
 # outside, through DNS, the internet and the firewall, the way a visitor
@@ -28,11 +28,12 @@
   register: _v_https
   check_mode: false   # read-only GET, also runs in --check (uri is skipped there otherwise)
   failed_when: false
+  when: blog_web_acme_enabled | default(true) | bool
   delegate_to: localhost
   become: false
 
 # Runs ON the server. --resolve sends the request for the real host name
-# to 127.0.0.1, so it hits the local ingress without DNS (and SNI/Host are
+# to 127.0.0.1, so it hits the local nginx without DNS (and SNI/Host are
 # still correct). -k skips certificate checks (that was the job of the
 # task above), -I fetches headers only. Lower-casing makes the later
 # "is the header present?" tests case-insensitive.

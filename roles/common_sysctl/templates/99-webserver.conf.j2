@@ -39,24 +39,15 @@ net.ipv4.tcp_max_syn_backlog     = 4096
 # 20 MB upload over HTTP/3 overflowed it - 284 dropped packets (Udp
 # RcvbufErrors) and 7.8 MB/s instead of 11.9 MB/s over HTTP/2 (2026-11-03).
 # This only raises the ceiling; the quic listeners ask for 4 MB themselves
-# (rcvbuf/sndbuf in the Ingress server-snippets), every other socket keeps
+# (rcvbuf/sndbuf on the listen line, blog_web), every other socket keeps
 # the 208 KB default. 7.5 MB is the value QUIC implementations recommend.
 net.core.rmem_max = 7500000
 net.core.wmem_max = 7500000
 
-# --- inotify limits for K3s ---
-# containerd, the kubelet and the pods watch files with inotify. The kernel
-# default of 128 instances per user is shared by all of them; once it runs
-# out, new pods or "kubectl logs -f" fail with "too many open files".
-# 8192 / 524288 are the values commonly recommended for Kubernetes nodes
-# (live on 2026-10-16: 128 instances, 56k-176k watches on the three hosts).
-fs.inotify.max_user_instances = 8192
-fs.inotify.max_user_watches   = 524288
-
 # --- Write-back of dirty pages ---
 # Defaults are 10 % / 30 % of RAM: on a 24 GB host up to ~7 GB of unwritten
-# data can pile up and then be flushed in one burst (backup pulls, database
-# dumps, big uploads), stalling other I/O. Starting background write-back at
+# data can pile up and then be flushed in one burst (backup pulls, site
+# deploys), stalling other I/O. Starting background write-back at
 # 5 % and throttling writers at 10 % keeps the flushes smaller and steadier.
 vm.dirty_background_ratio = 5
 vm.dirty_ratio            = 10

@@ -1,0 +1,16 @@
+# quic_bpf: the nginx master loads a small eBPF program that sends QUIC packets to
+# the worker owning the connection, so a reload no longer hangs new connections
+# (nginx issue 1937). Reviewed from the AVCs of one permissive test run on 2026-11-06.
+# Workers run as user nginx without capabilities, and kernel.unprivileged_bpf_disabled
+# is 2 (common_sysctl), so these rules give a compromised worker no BPF access.
+policy_module(homelab_nginx_bpf, 1.0.0)
+
+gen_require(`
+    type httpd_t;
+    class capability2 { bpf perfmon };
+    class bpf { map_create map_read map_write prog_load prog_run };
+')
+
+allow httpd_t self:capability2 { bpf perfmon };
+allow httpd_t self:capability net_admin;
+allow httpd_t self:bpf { map_create map_read map_write prog_load prog_run };

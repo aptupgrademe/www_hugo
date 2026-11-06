@@ -25,10 +25,8 @@ command -v ausearch >/dev/null || { echo "auditd-notify: ausearch not found" >&2
 # --input-logs: without a terminal ausearch reads stdin instead of the audit
 # log - from a pipe it waits forever (seen 2026-10-19 over ssh).
 
-# High-signal keys only. k3s_manifests is the important one: k3s auto-deploys
-# anything written into its manifests dir, so a change there = potential
-# cluster backdoor, and this repo never writes it (it uses `kubectl apply`).
-KEYS="k3s_manifests k3s_token k3s_tls identity"
+# High-signal keys only: users and passwords do not change in normal operation.
+KEYS="identity"
 
 STATE_DIR="/var/lib/auditd-notify"
 MAILTO="{{ email }}"
@@ -50,17 +48,10 @@ for key in $KEYS; do
 
     # Only events recorded since the last checkpoint, human-readable.
     new="$(ausearch --input-logs -k "$key" --checkpoint "$ckpt" --start checkpoint -i 2>/dev/null)" || true
-    # K3s itself rewrites its bundled manifests, the token and some TLS files
-    # on EVERY start (restart, upgrade, nightly reboot) - since the notifier
-    # works again (2026-10-19) that mailed after each of them. Drop an event
-    # only if BOTH match: the executable is the K3s binary from its data
-    # directory and the process runs in K3s's SELinux domain. Any other
-    # writer (cp, a shell, another binary) is still reported.
-    # Also dropped: loading the watch rule itself (auditctl op=add_rule, at
+    # Dropped: loading the watch rule itself (auditctl op=add_rule, at
     # every boot and every common_auditd run). Removing a rule - the way to
     # switch this watch off - is still reported.
     new="$(printf '%s\n' "$new" | awk -v RS='----\n' -v ORS='' '
-        /exe=\/var\/lib\/rancher\/k3s\/data\/[0-9a-f]+\/bin\/k3s / && /subj=system_u:system_r:container_runtime_t:/ { next }
         /type=CONFIG_CHANGE/ && /op=add_rule/ && /exe=\/usr\/sbin\/auditctl / { next }
         /[^[:space:]]/ { print "----\n" $0 }')"
     if [ -n "$new" ]; then
@@ -77,8 +68,7 @@ if [ -n "$report" ]; then
         echo "essentially never change during normal operation, on ${HOST}."
         echo
         echo "If this was your own admin action or an Ansible run, ignore it."
-        echo "Otherwise investigate immediately – e.g. a write to the k3s"
-        echo "manifests directory can silently deploy a workload into the cluster."
+        echo "Otherwise investigate immediately – someone may have added an account."
         echo "${report}"
     } | "$MAIL_BIN" -s "[${HOST}] AUDIT ALERT: critical audit key changed" "$MAILTO"
 fi

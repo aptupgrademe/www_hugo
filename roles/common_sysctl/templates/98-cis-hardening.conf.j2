@@ -1,17 +1,14 @@
 # Managed by Ansible – do not edit manually
 # =============================================================================
-# CIS AlmaLinux 9 Benchmark Level 1 (Server) – network kernel hardening
+# CIS AlmaLinux Benchmark Level 1 (Server) – network kernel hardening
 # =============================================================================
-# Deliberately NOT included here, unlike a stock CIS profile:
-#   - net.ipv4.ip_forward / net.ipv4.conf.all.forwarding: K3s/Flannel
-#     require IP forwarding to route pod-to-pod and pod-to-internet traffic.
-#     Disabling this would break the entire cluster network.
-#   - net.ipv4.conf.all.rp_filter / net.ipv4.conf.default.rp_filter: verified
-#     live (2026-08-20) that all.rp_filter is already 0 on this host despite
-#     the distro default of 1 for default.rp_filter - something in the k3s
-#     stack (then still with Calico) already manages this for CNI compatibility (strict reverse
-#     path filtering is a well-known cause of dropped pod traffic on
-#     Kubernetes nodes). Left alone rather than overridden.
+# --- This host routes nothing ---
+# The K3s setup needed forwarding and a loose reverse-path filter for its pods.
+# A single nginx on a single interface needs neither.
+net.ipv4.ip_forward = 0
+net.ipv6.conf.all.forwarding = 0
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
 
 # --- ICMP redirects: don't accept or send them ---
 # A legitimate router would use routing protocols, not ICMP redirects, to
@@ -40,16 +37,8 @@ net.ipv6.conf.all.accept_ra = 0
 net.ipv6.conf.default.accept_ra = 0
 
 # --- Log packets with impossible ("martian") source addresses ---
-# Only on the uplink, deliberately not via all/default as CIS writes it:
-# every pod network namespace copies the host's all/default values when it
-# is created, and an interface logs when "all" OR its own value is 1. With
-# all/default = 1 every pod logged the ARP broadcasts of new pods as
-# martians (~50 lines/h, from 2026-10-19, found with Loki). The interface
-# that faces the internet still logs; pods, cni0, flannel and the veth
-# pairs do not. A CIS scanner will flag all/default - this is the reason.
-net.ipv4.conf.all.log_martians = 0
-net.ipv4.conf.default.log_martians = 0
-net.ipv4.conf.{{ ansible_facts['default_ipv4']['interface'] | default('eth0') }}.log_martians = 1
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
 
 # --- Ignore ICMP broadcast echo requests (smurf attack mitigation) ---
 net.ipv4.icmp_echo_ignore_broadcasts = 1
@@ -79,7 +68,7 @@ fs.suid_dumpable = 0
 
 # --- Kernel log only for root ---
 # dmesg can reveal kernel addresses, hardware details and driver errors that
-# help an attacker; unprivileged users (and processes in pods) cannot read it.
+# help an attacker; unprivileged users cannot read it.
 kernel.dmesg_restrict = 1
 
 # --- RFC 1337: ignore RST for sockets in TIME-WAIT ---

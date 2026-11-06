@@ -3,14 +3,14 @@
 #
 # Restart host services that still run code an update has replaced.
 # "needs-restarting -r" (the 03:30 reboot) only covers kernel, glibc, systemd
-# and a few more. A security update of sshd, fail2ban, redis or mariadb is
+# and a few more. A security update of sshd, fail2ban or nginx is
 # installed at night but the running process keeps the old, vulnerable code
 # until the next reboot - possibly weeks. "needs-restarting -s" lists exactly
 # those services; this restarts them, except the ones where a restart is
 # disruptive or impossible (they wait for the next reboot and are only named
 # in the mail). Silent when nothing needs a restart.
 set -u
-SKIP='^(dbus.*|dbus-broker|systemd-.*|user@.*|user-runtime-dir@.*|getty@.*|serial-getty@.*|auditd|NetworkManager|k3s|polkit)$'
+SKIP='^(dbus.*|dbus-broker|systemd-.*|user@.*|user-runtime-dir@.*|getty@.*|serial-getty@.*|auditd|NetworkManager|polkit)$'
 MAIL_TO="${1:-root}"
 mapfile -t units < <(/usr/bin/needs-restarting -s 2>/dev/null | sed 's/\.service$//' | sort -u)
 [ ${#units[@]} -eq 0 ] && exit 0

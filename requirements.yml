@@ -4,14 +4,7 @@
 #   ansible-galaxy collection install -r requirements.yml
 #
 # Used by:
-#   community.mysql  → next_mariadb          (mysql_user, mysql_db)
-#   community.general → next_packages,       (ini_file - was written as
-#                       common_grafana        ansible.builtin.ini_file, which
-#                                             only resolved through a legacy
-#                                             redirect to this collection)
-#   kubernetes.core  → common_k3s, blog_k3s_deploy,
-#                      next_k3s_deploy       (k8s, k8s_info, helm,
-#                                             helm_repository)
+#   community.general → common_grafana, ...  (ini_file, modprobe, sefcontext)
 #   ansible.posix    → common_selinux        (seboolean, selinux)
 #                      common_cis_hardening  (mount - the nodev/nosuid/noexec
 #                                             bind mounts on /tmp and /var/tmp)
@@ -26,17 +19,11 @@
 # next install (a new major version may break modules by semver), so two
 # controllers could run the same playbook with different module code. Bump
 # deliberately, read the collection's changelog, then re-run --check --diff.
-# kubernetes.core needs >= 6.5.0 for Helm 4 (helm_version in group_vars):
-# 6.5.0 maps the renamed Helm 4 flags (--atomic -> --rollback-on-failure).
 # ansible-galaxy installs into ~/.ansible/collections, which takes precedence
 # over the older copies bundled with the distro's ansible package.
 
 collections:
-  - name: community.mysql
-    version: "3.15.0"
   - name: ansible.posix
     version: "2.1.0"
   - name: community.general
     version: "11.2.1"
-  - name: kubernetes.core
-    version: "6.6.0"

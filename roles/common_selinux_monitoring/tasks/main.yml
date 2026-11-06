@@ -2,7 +2,7 @@
 # =============================================================================
 # Role: common_selinux_monitoring
 # Purpose: Own SELinux domains for the monitoring services (since 2026-10-19).
-#          Prometheus, node_exporter, mysqld_exporter and Grafana ran as
+#          Prometheus, node_exporter and Grafana ran as
 #          unconfined_service_t: the targeted policy has no module for them,
 #          and their binaries are plain bin_t. Each gets a small local module
 #          with a domain, an exec type and types for its own data, built
@@ -12,9 +12,9 @@
 #          (common_monit).
 #          Learning phase first: selinux_monitoring_permissive (defaults)
 #          keeps the new domains permissive, so denials are logged but not
-#          enforced. The reviewed allow rules are in the templates; since
-#          2026-10-20 the blog enforces, the Nextcloud hosts still learn.
-# Target:  both stacks, after the monitoring roles (the binaries and data
+#          enforced. The reviewed allow rules are in the templates; enforcing
+#          since 2026-10-20.
+# Target:  after the monitoring roles (the binaries and data
 #          directories must exist before they can be labelled).
 # =============================================================================
 #
@@ -79,13 +79,15 @@
     or ('homelab_' ~ item) not in sm_loaded.stdout_lines
   changed_when: true
 
-# -v prints a line per file whose label changed; -F also resets the user part.
+# -v prints a line per file whose type changed. No -F: it also resets the user part,
+# and the heartbeat files written from an SSH session would count as a change on
+# every run, with a pointless exporter restart.
 - name: SELinux monitoring | Apply the file contexts
   ansible.builtin.shell: |
     set -o pipefail
     awk '{print $1}' /etc/selinux/local/monitoring/homelab_{{ item }}.fc \
       | sed -e 's|(/\.\*)?$||' | while read -r p; do
-          [ -e "$p" ] && restorecon -RFv "$p"
+          [ -e "$p" ] && restorecon -Rv "$p"
         done
   loop: "{{ selinux_monitoring_modules }}"
   register: sm_restorecon

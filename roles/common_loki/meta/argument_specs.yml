@@ -2,12 +2,11 @@
 # Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
 #
 # meta/argument_specs.yml: the role's declared inputs, checked by Ansible when
-# the role starts (type, required). How it works in detail: see
-# roles/common_mysqld_exporter/meta/argument_specs.yml.
+# the role starts (type, required).
 
 argument_specs:
   main:
-    short_description: Loki + Grafana Alloy (journal, pod logs, audit/fail2ban log, 14 days, local only) with log alerts in
+    short_description: Loki + Grafana Alloy (journal, audit/fail2ban log, 14 days, local only) with log alerts in
       Grafana
     description:
       - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).

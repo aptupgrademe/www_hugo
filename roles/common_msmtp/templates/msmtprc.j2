@@ -8,10 +8,9 @@ tls            on
 tls_trust_file /etc/ssl/certs/ca-bundle.crt
 logfile        /var/log/msmtp.log
 # Always send as the configured address. crond hands its job mails over
-# with envelope-from "root"; the Nextcloud hosts' relay rejected that
-# (501 "envelope from address root not accepted") - the nightly rkhunter
-# warning mail never arrived there (found 2026-10-22). The blog's relay
-# accepted it, so the same setting just makes both stacks behave alike.
+# with envelope-from "root"; some relays reject that (501 "envelope from
+# address root not accepted") and the mail silently never arrives (found
+# 2026-10-22 with the nightly rkhunter warning).
 allow_from_override off
 set_from_header     on
 

@@ -50,14 +50,12 @@
 
 # The night is planned around this window: AIDE check 00:00
 # (common_cis_hardening), updates 01:00-02:00, reboot-if-needed 03:30,
-# service restarts 03:45, AIDE baseline refresh 04:00, ClamAV data scan 04:30 (Nextcloud hosts,
-# common_clamav), reboot-required check 06:00. The packaged
+# service restarts 03:45, AIDE baseline refresh 04:00, reboot-required check 06:00. The packaged
 # timer fires at 06:00 + up to 60 min, i.e. AFTER the reboot and the AIDE
 # refresh - found 2026-10-01: every security update (gawk) mailed an AIDE
 # alert the following midnight, and a new kernel waited ~21 h for the next
-# 03:30 reboot. The drop-in moves it into the window above (host clock:
-# Europe/Berlin on the Nextcloud hosts, UTC on the blog - the cron jobs use
-# the same clock, so the order holds on every host).
+# 03:30 reboot. The drop-in moves it into the window above (the cron jobs
+# use the same host clock, so the order holds).
 - name: dnf-automatic | Create the install timer drop-in directory
   ansible.builtin.file:
     path: /etc/systemd/system/dnf-automatic-install.timer.d
@@ -115,11 +113,11 @@
 # -----------------------------------------------------------------------------
 # Restart services that run replaced code
 # needs-restarting -r above only covers what needs a REBOOT (kernel, glibc,
-# systemd ...). An updated sshd, fail2ban, redis or mariadb keeps running its
+# systemd ...). An updated sshd, fail2ban or nginx keeps running its
 # old code until the next reboot. At 03:45 - after a possible 03:30 reboot,
 # which already restarts everything - the script restarts what
 # "needs-restarting -s" still lists, skips dbus/systemd/NetworkManager/
-# auditd/k3s (disruptive or not restartable; they wait for the next reboot),
+# auditd (disruptive or not restartable; they wait for the next reboot),
 # checks sshd's config first, and mails only when it did or failed something.
 # -----------------------------------------------------------------------------
 - name: dnf-automatic | Deploy restart-updated-services script

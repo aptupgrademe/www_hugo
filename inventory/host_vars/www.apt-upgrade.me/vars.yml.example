@@ -1,79 +1,40 @@
 ---
 # =============================================================================
-# Host variables – WordPress blog (production)
+# Host variables – production
 #
 # Usage:
-#   1. cp vars.yml.example vars.yml
-#   2. Fill in all CHANGE_ME values
-#   ansible-playbook blog.yml --limit www.apt-upgrade.me --ask-vault-pass
+#   ansible-playbook blog.yml --limit www.example.de --vault-password-file .vault_pass
 #
-# Sensitive credentials (passwords) are in vault.yml – see vault.yml.example
+# Sensitive credentials are in vault.yml (encrypt it:
+#   ansible-vault encrypt inventory/host_vars/www.example.de/vault.yml)
 # =============================================================================
 
 # --- Connection ---
+# Port 22 is the default on a fresh server.
+# After the first playbook run + reboot, sshd switches to 10022 – change this to 10022 then.
 ansible_user: root
-ansible_port: 10022                      # 22 on first run, 10022 after SSH hardening
-ansible_host: "{{ server_ipv4 }}"   # single source of truth, see --- Network --- below
+ansible_port: 22
+ansible_host: "{{ server_ipv4 }}"
 
 # --- Network ---
-server_ipv4: "CHANGE_ME"    # e.g. 1.2.3.4
-server_ipv6: "CHANGE_ME"    # e.g. 2001:db8::1  – or remove if no public IPv6
-
-# --- Network aliases ---
-blog_ipv4: "{{ server_ipv4 }}"
-blog_ipv6: "{{ server_ipv6 }}"
-
-# --- Database ---
-blog_db:      "wordpress_db"
-blog_db_user: "wordpress"       # DB username (password → vault.yml)
+server_ipv4: "192.0.2.10"
+server_ipv6: "2001:db8::10"
 
 # --- Hostnames and URLs ---
-blog_hostname: "CHANGE_ME"                        # e.g. www.example.de
+blog_hostname: "www.example.de"
 blog_url:      "https://{{ blog_hostname }}"
-
-# --- WordPress site ---
-blog_title:       "CHANGE_ME"
-blog_admin_email: "{{ email }}"
-
-# --- Plugins ---
-blog_wordpress_plugins:
-  # all-in-one-wp-migration removed 2026-10-19: the nightly HP3 pull (files + DB dump)
-  # is the backup, a move to a new server is blog.yml + restore; its .wpress files
-  # in the web root were only protected by .htaccess (nginx blocks them, 403)
-  - classic-editor
-
-# Bundled plugins this site does not use. Deactivating leaves the PHP on disk
-# and reachable over HTTP, so the role deletes these outright.
-blog_wordpress_remove_plugins:
-  # limit-login-attempts-reloaded removed 2026-10-26: wp-login.php is reachable only from
-  # the country list (nginx geo) and fail2ban's wp_login jail bans in the kernel - the
-  # plugin only duplicated that inside PHP
-  - limit-login-attempts-reloaded
-  - akismet
-  - hello
-
-# --- Themes ---
-# Every INACTIVE theme not listed here is deleted on each run. The active
-# theme is never touched. Keep one core default as the fallback WordPress
-# switches to if the active theme fatals.
-blog_wordpress_keep_themes:
-  - twentytwentyfive
-
-# --- Paths ---
-blog_k3s_www_dir: /srv/wordpress-www
-blog_k3s_db_dir:  /srv/wordpress-db
-
-# --- Grafana ---
 grafana_proxy_hostname: "{{ blog_hostname }}"
 
 # --- Mail / SMTP ---
-mail_from_address: "homelab"             # local part only (before @)
-mail_domain:       "CHANGE_ME"           # e.g. example.de
-mail_smtphost:     "CHANGE_ME"           # e.g. smtp.strato.de
-mail_smtpport:     "587"
-mail_smtpauth:     true
+mail_from_address: "server"
+mail_domain: "example.de"
+mail_smtphost: "smtp.example.de"
+mail_smtpport: 465
+mail_smtpauth: "LOGIN"
 
-# --- Visitor statistics (blog_visitor_stats) -------------------------------
-# Prefixes kept out of the daily visitor numbers - usually your own
-# connections, which otherwise dominate a small blog's statistics.
-# visitor_stats_exclude: ["203.0.113.0/24"]
+# --- Static site ---
+blog_web_acme_enabled: true
+blog_web_deploy_pubkey: "ssh-ed25519 AAAA... blog-deploy@builder"
+
+# --- Optional: SSH and /grafana only from these countries' IP blocks ---
+fw_ssh_geo_countries: [DE]

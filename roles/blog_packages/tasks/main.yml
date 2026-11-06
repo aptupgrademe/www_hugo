@@ -1,15 +1,14 @@
 ---
 # =============================================================================
-# Role: blog_packages (K3s-only mode)
-# Purpose: Minimal host-level packages for the blog server.
-#          The application (MariaDB, WordPress, nginx, Redis) runs inside
-#          K3s. On the host itself run only infrastructure services: SSH,
-#          nftables, fail2ban, auditd, monitoring (node_exporter,
-#          Prometheus, Grafana, Monit), ClamAV/rkhunter/AIDE - installed by
+# Role: blog_packages
+# Purpose: Base packages of the blog server. The site itself is files, served
+#          by nginx (blog_web). Next to it run only infrastructure services:
+#          SSH, nftables, fail2ban, auditd, monitoring (node_exporter,
+#          Prometheus, Grafana, Loki, Monit), rkhunter/AIDE - installed by
 #          their own roles; this role adds the base packages.
 #
 #          The packages in "Install host packages" come from the default
-#          AlmaLinux 9 BaseOS/AppStream repos. EPEL is enabled here anyway
+#          AlmaLinux 10 BaseOS/AppStream repos. EPEL is enabled here anyway
 #          because later roles need it (fail2ban, Monit, rkhunter).
 # =============================================================================
 #
@@ -139,17 +138,41 @@
 # -----------------------------------------------------------------------------
 # Package installation
 # -----------------------------------------------------------------------------
+# nginx from nginx.org, mainline: only 1.31 and newer survive a reload without hanging
+# HTTP/3 connections (with quic_bpf). Measured on 2026-11-06 with held connections:
+# AlmaLinux 1.26.3 hung 40 of 320 requests, stable 1.30.6 40 of 1,000, 1.31.8 0 of 1,600.
+- name: Packages | nginx.org repository
+  ansible.builtin.yum_repository:
+    name: nginx-mainline
+    description: nginx mainline repo
+    baseurl: https://nginx.org/packages/mainline/centos/$releasever/$basearch/
+    gpgcheck: true
+    gpgkey: https://nginx.org/keys/nginx_signing.key
+    enabled: true
+    module_hotfixes: true
+
+- name: Packages | Keep the AlmaLinux nginx out of the way
+  community.general.ini_file:
+    path: /etc/yum.repos.d/almalinux-appstream.repo
+    section: appstream
+    option: exclude
+    value: nginx*
+    no_extra_spaces: true
+    mode: "0644"
+
 - name: Packages | Install host packages
   ansible.builtin.dnf:
     name:
       # --- Firewall ---
       - nftables
 
+      # --- Web server (installed here: the firewall names its user) ---
+      - nginx
+
       # --- SELinux tooling ---
       - policycoreutils
       - policycoreutils-python-utils
       - selinux-policy-targeted
-      - container-selinux        # K3s container SELinux policy (AppStream)
 
       # --- Utilities ---
       - curl

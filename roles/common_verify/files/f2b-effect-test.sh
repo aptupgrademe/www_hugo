@@ -1,7 +1,7 @@
 #!/bin/bash
-# fail2ban effect test (common_verify, both stacks), run from stdin:
+# fail2ban effect test (common_verify), run from stdin:
 #   1. every filter matches a canned line in today's log format
-#      (containerd-prefixed ingress line / sshd journal line)
+#      (nginx access log line / sshd journal line)
 #   2. per jail: ban a TEST-NET address (192.0.2.x / 2001:db8::x) -> it is in
 #      that jail's own set pair f2b_<set>4/6; unban -> gone
 #   3. one address in two jails, unban in one -> still in the other set
@@ -15,13 +15,11 @@ fails=0
 fail() { echo "FAIL $*"; fails=$((fails + 1)); }
 
 # --- 1. canned lines ----------------------------------------------------------
-pre='2026-10-26T08:00:00.000000000+01:00 stdout F 192.0.2.50 - - [26/Oct/2026:07:00:00 +0000]'
+pre='192.0.2.50 - - [26/Oct/2026:07:00:00 +0000]'
 declare -A LINE=(
-  [nginx-k3s-wp-login]="$pre \"POST /wp-login.php HTTP/1.1\" 200 4512 \"-\" \"test\" \"-\""
-  [nginx-k3s-nc-login]="$pre \"POST /index.php/login HTTP/1.1\" 303 0 \"-\" \"test\" \"-\""
-  [nginx-k3s-grafana-login]="$pre \"POST /grafana/login HTTP/1.1\" 401 52 \"-\" \"test\" \"-\""
-  [nginx-k3s-scanner]="$pre \"GET /nothing-here HTTP/1.1\" 404 548 \"-\" \"test\" \"-\""
-  [nginx-k3s-bad-paths]="$pre \"GET /.env HTTP/1.1\" 404 548 \"-\" \"test\" \"-\""
+  [nginx-grafana-login]="$pre \"POST /grafana/login HTTP/1.1\" 401 52 \"-\" \"test\""
+  [nginx-scanner]="$pre \"GET /nothing-here HTTP/1.1\" 404 548 \"-\" \"test\""
+  [nginx-bad-paths]="$pre \"GET /.env HTTP/1.1\" 404 548 \"-\" \"test\""
   [sshd]="Oct 26 08:00:00 host sshd-session[4242]: Invalid user test from 192.0.2.50 port 4242"
 )
 for f in "${!LINE[@]}"; do
@@ -50,12 +48,12 @@ done
 # --- 3. two jails, one address --------------------------------------------------
 x=192.0.2.99
 fail2ban-client set sshd banip $x >/dev/null
-fail2ban-client set nginx-k3s-scanner banip $x >/dev/null; sleep 1
+fail2ban-client set nginx-scanner banip $x >/dev/null; sleep 1
 fail2ban-client set sshd unbanip $x >/dev/null; sleep 1
-if in_set "${SET[nginx-k3s-scanner]}4" $x && ! in_set "${SET[sshd]}4" $x; then
+if in_set "${SET[nginx-scanner]}4" $x && ! in_set "${SET[sshd]}4" $x; then
   echo "cross-jail ok"
 else
   fail "cross-jail: unban in sshd changed the scanner set"
 fi
-fail2ban-client set nginx-k3s-scanner unbanip $x >/dev/null
+fail2ban-client set nginx-scanner unbanip $x >/dev/null
 echo "RESULT $fails"

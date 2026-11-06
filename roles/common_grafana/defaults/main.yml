@@ -9,4 +9,4 @@
 # actual check that they exist is meta/argument_specs.yml.
 
 # Non-sensitive – set in host_vars/<host>/vars.yml:
-# grafana_proxy_hostname:   "CHANGE_ME"   # hostname under which nginx serves /grafana/ (set to nextcloud_hostname or blog_hostname)
+# grafana_proxy_hostname:   "CHANGE_ME"   # hostname under which nginx serves /grafana/ (set to blog_hostname)

@@ -2,12 +2,11 @@
 # Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
 #
 # meta/argument_specs.yml: the role's declared inputs, checked by Ansible when
-# the role starts (type, required). How it works in detail: see
-# roles/common_mysqld_exporter/meta/argument_specs.yml.
+# the role starts (type, required).
 
 argument_specs:
   main:
-    short_description: Install Grafana OSS on AlmaLinux 9, configure a Prometheus datasource and import dashboard
+    short_description: Install Grafana OSS on AlmaLinux 10, configure a Prometheus datasource and import dashboard
       1860 (Node...
     description:
       - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
@@ -34,9 +33,3 @@ argument_specs:
         description: Public hostname of the Grafana reverse proxy
         type: str
         required: true
-      blog_hostname:
-        description: Public hostname of the blog (e.g. www.example.de)
-        type: str
-      nextcloud_hostname:
-        description: Public hostname of Nextcloud (e.g. nextcloud.example.de)
-        type: str

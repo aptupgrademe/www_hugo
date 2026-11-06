@@ -1,33 +1,20 @@
 # Managed by Ansible – do not edit manually
 # =============================================================================
-# Fail2Ban – jail.local  (K3s mode)
+# Fail2Ban – jail.local
 #
-# Banned IPs are written directly into the nftables sets banned4/banned6
-# (defined in /etc/nftables.conf by common_firewall) using the custom action
-# nftables-banned-sets.  The sets use native nftables timeout for auto-expiry.
+# Banned IPs are written directly into the nftables sets of common_firewall
+# using the custom action nftables-banned-sets. The sets use native nftables
+# timeout for auto-expiry.
 #
 # Jails:
 #   sshd                  – SSH brute-force (systemd backend)
-#   nginx-k3s-wp-login    – repeated POST /wp-login.php
-#   nginx-k3s-scanner     – repeated 403/404 responses (directory scanners)
-#   nginx-k3s-bad-paths   – known-malicious paths (/.env, webshells, etc.)
+#   nginx-grafana-login   – failed logins at /grafana/
+#   nginx-scanner         – repeated 403/404 responses (directory scanners)
+#   nginx-bad-paths       – known-malicious paths (/.env, webshells, /wp-login.php, etc.)
 #   recidive              – repeat offenders (banned 3×/day) → 30-day ban
 #
-# HTTP jails read from:
-#   /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
-# (containerd-prefixed nginx access log, real client IPs visible)
-# backend = polling because the pod UID in the path changes on pod restarts,
-# AND kubelet increments the log filename (0.log, 1.log, 2.log, ...) on every
-# container restart within the same pod - a fixed "0.log" goes stale the
-# first time the container restarts and crashes the whole fail2ban service
-# (one jail failing to find its log file aborts startup for all jails,
-# including sshd). The trailing *.log glob avoids that crash, BUT fail2ban
-# expands it only when a jail starts: a log file created later (container
-# restart, or a reboot where fail2ban starts before the ingress container)
-# is never picked up. That left the HTTP jails blind for days (2026-09-23).
-# The fail2ban-ingress-logwatch timer reloads these jails when the set of
-# files changes. Old files stay matched; each has its own tracked position,
-# so re-reading them is a harmless no-op.
+# HTTP jails read /var/log/nginx/access.log (real client IPs). There is no
+# login for visitors on this site any more; the only login is Grafana's.
 # =============================================================================
 
 [DEFAULT]
@@ -61,59 +48,17 @@ maxretry = 3
 
 
 # -----------------------------------------------------------------------------
-# HTTP – WordPress login brute force
-# Rate-limiting at nginx-ingress (5 r/s) already slows attackers.
-# Fail2ban bans IPs that keep trying despite the rate limit.
-# maxretry=10 over 10 min to avoid false positives from password managers
-# trying multiple accounts.
-# -----------------------------------------------------------------------------
-[nginx-k3s-wp-login]
-enabled  = true
-action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-wp-login'] }}]
-port     = 80,443
-filter   = nginx-k3s-wp-login
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
-backend  = polling
-maxretry = 10
-findtime = 600
-
-
-# -----------------------------------------------------------------------------
-# HTTP – Nextcloud login brute force
-# Mirrors nginx-k3s-wp-login above. Rate-limiting at nginx-ingress (nc_login
-# zone, 5 r/s) already slows attackers; fail2ban bans IPs that keep trying
-# despite the rate limit. Harmless no-op on hosts without a Nextcloud
-# deployment – the filter simply never matches.
-# -----------------------------------------------------------------------------
-[nginx-k3s-nc-login]
-enabled  = true
-action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-nc-login'] }}]
-port     = 80,443
-filter   = nginx-k3s-nc-login
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
-backend  = polling
-maxretry = 10
-findtime = 600
-
-
-# -----------------------------------------------------------------------------
 # HTTP – Grafana login brute force
-# Grafana is proxied at /grafana/ and, unlike wp-login/nc-login, has NO
-# ingress rate-limit zone of its own and no application-level lockout - so
-# without this jail its login is the least-throttled auth surface on the box.
-# The filter matches only failed logins (HTTP 401), so a successful admin
-# login never counts toward the ban. maxretry is stricter than the WordPress/
-# Nextcloud jails (5 vs 10) because a real admin does not fail five logins in
-# ten minutes, and there is no legitimate password-manager multi-account case
-# here. Harmless no-op on hosts that do not proxy Grafana - the filter simply
-# never matches.
+# Grafana is the only login on this host. The filter matches only failed logins
+# (HTTP 401), so a successful admin login never counts toward the ban. A real
+# admin does not fail five logins in ten minutes.
 # -----------------------------------------------------------------------------
-[nginx-k3s-grafana-login]
+[nginx-grafana-login]
 enabled  = true
-action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-grafana-login'] }}]
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-grafana-login'] }}]
 port     = 80,443
-filter   = nginx-k3s-grafana-login
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
+filter   = nginx-grafana-login
+logpath  = /var/log/nginx/access.log
 backend  = polling
 maxretry = 5
 findtime = 600
@@ -125,12 +70,12 @@ findtime = 600
 # Threshold is intentionally generous to avoid false positives from
 # legitimate crawlers following dead links.
 # -----------------------------------------------------------------------------
-[nginx-k3s-scanner]
+[nginx-scanner]
 enabled  = true
-action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-scanner'] }}]
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-scanner'] }}]
 port     = 80,443
-filter   = nginx-k3s-scanner
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
+filter   = nginx-scanner
+logpath  = /var/log/nginx/access.log
 backend  = polling
 maxretry = 20
 findtime = 60
@@ -142,12 +87,12 @@ findtime = 60
 # Ban immediately after 2 hits (one hit could be a coincidence, two is intent).
 # bantime overrides DEFAULT to 24 h regardless of fail2ban_bantime.
 # -----------------------------------------------------------------------------
-[nginx-k3s-bad-paths]
+[nginx-bad-paths]
 enabled  = true
-action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-k3s-bad-paths'] }}]
+action   = nftables-banned-sets[setname=f2b_{{ fail2ban_nft_jails['nginx-bad-paths'] }}]
 port     = 80,443
-filter   = nginx-k3s-bad-paths
-logpath  = /var/log/pods/ingress-nginx_ingress-nginx-*/nginx-ingress/*.log
+filter   = nginx-bad-paths
+logpath  = /var/log/nginx/access.log
 backend  = polling
 maxretry = 2
 findtime = 3600

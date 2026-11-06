@@ -1,7 +1,7 @@
 ---
 # =============================================================================
 # Role: common_rkhunter
-# Purpose: Install and configure rkhunter (rootkit hunter) on AlmaLinux 9.
+# Purpose: Install and configure rkhunter (rootkit hunter) on AlmaLinux 10.
 #          Runs a daily cron scan and warns by e-mail on suspicious findings.
 #          Must run AFTER all other software is installed so that --propupd
 #          captures a clean baseline of the system.
@@ -128,11 +128,11 @@
 # process as dnf, after every transaction that actually changed packages.
 # The old dnf-automatic drop-in only fired for the nightly scheduled job,
 # not for manual "dnf upgrade" runs; the plugin covers both.
-# Plugin path: /usr/lib/python3.9/site-packages/dnf-plugins/
+# Plugin path: /usr/lib/python3.12/site-packages/dnf-plugins/
 # -----------------------------------------------------------------------------
 - name: rkhunter | Deploy dnf plugin for auto-propupd
   ansible.builtin.copy:
-    dest: /usr/lib/python3.9/site-packages/dnf-plugins/rkhunter_propupd.py
+    dest: /usr/lib/python3.12/site-packages/dnf-plugins/rkhunter_propupd.py
     owner: root
     group: root
     mode: "0644"

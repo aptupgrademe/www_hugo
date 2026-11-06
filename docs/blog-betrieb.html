@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog – Betriebsdokumentation</title><style>body{font:16px/1.6 system-ui,sans-serif;max-width:52rem;margin:2rem auto;padding:0 1rem;color:#222}
+h1{font-size:1.8rem}h2{font-size:1.3rem;margin-top:2.2rem;border-bottom:1px solid #ccc}
+pre{background:#f4f4f4;padding:.8rem;overflow-x:auto;font-size:.85rem}code{background:#f4f4f4;padding:0 .2em}pre code{padding:0}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:.35rem .6rem;text-align:left;vertical-align:top}
+nav a{margin-right:1rem}@media (prefers-color-scheme:dark){body{background:#181818;color:#ddd}pre,code{background:#2a2a2a}td,th{border-color:#555}}</style></head><body>
+<h1>Blog – Betriebsdokumentation</h1><nav><a href="blog-betrieb.html">Deutsch</a><a href="blog-operations.html">English</a><a href="blog-exploitation.html">Français</a></nav>
+<h2>Überblick</h2>
+<p>Der Blog besteht aus fertigen Dateien. nginx liefert sie aus, es gibt kein PHP, keine Datenbank, keine Container und kein Login für Besucher. Zwei Repositories gehören dazu:</p><table><tr><th>Repository</th><th>Inhalt</th></tr><tr><td><code>www_hugo</code> (öffentlich)</td><td>Der Server: Playbook und Rollen</td></tr><tr><td><code>www_hugo_content</code> (privat)</td><td>Die Seite: Beiträge, Bilder, Theme, Build und Deploy</td></tr></table>
+<h2>Beitrag veröffentlichen</h2>
+<p>Beiträge sind Markdown-Dateien in <code>site/content/&lt;sprache&gt;/</code>. Veröffentlichen braucht weder Ansible noch Root. Der Deploy-Schlüssel darf nur hochladen und umschalten. Die letzten fünf Fassungen bleiben auf dem Server, ein Rollback dauert eine Sekunde.</p>
+<pre><code># In the content repo
+tools/build.sh                 # Hugo + search index into public/
+tools/deploy.sh &lt;host&gt;         # upload, then switch atomically
+tools/deploy.sh &lt;host&gt; 10022 status
+tools/deploy.sh &lt;host&gt; 10022 rollback</code></pre>
+<h2>Playbook ausführen</h2>
+<p>Vor jedem echten Lauf kommt der Check-Lauf, immer nur ein Host. Danach muss die Drift-Prüfung sauber sein.</p>
+<pre><code># Always first, one host at a time
+ansible-playbook blog.yml --limit &lt;host&gt; --check --diff --vault-password-file .vault_pass
+# Then for real
+ansible-playbook blog.yml --limit &lt;host&gt; --vault-password-file .vault_pass
+# Afterwards this must report NO DRIFT
+scripts/check-drift.sh blog.yml &lt;host&gt; --vault-password-file .vault_pass</code></pre>
+<p>Nach einem Lauf mit <code>--tags</code> auch die Baselines erneuern, sonst melden AIDE und rkhunter nachts die geänderten Dateien:</p>
+<pre><code>ansible-playbook blog.yml --limit &lt;host&gt; --tags blog_web --vault-password-file .vault_pass
+ansible-playbook blog.yml --limit &lt;host&gt; --tags common_rkhunter,common_aide_refresh --vault-password-file .vault_pass</code></pre>
+<h2>Updates</h2>
+<p>dnf-automatic spielt Sicherheitsupdates nachts ein, nginx kommt aus dem Mainline-Repo von nginx.org. Reihenfolge der Nacht: AIDE 00:00, Updates 01:00–02:00, Neustart bei Bedarf 03:30, Dienste neu starten 03:45, AIDE-Baseline 04:00. Feste Versionen stehen in <code>inventory/group_vars/all/versions.yml</code>. Der Bericht von <code>common_version_check</code> zeigt, was neuer ist.</p>
+<h2>TLS</h2>
+<p>certbot holt die Zertifikate über HTTP-01 und erneuert sie 30 Tage vor Ablauf, danach lädt er nginx neu. Monit warnt, wenn ein Zertifikat weniger als 21 Tage gilt oder noch selbst signiert ist. Auf einem Host ohne passenden DNS-Eintrag bleibt es mit <code>blog_web_acme_enabled: false</code> beim selbst signierten Zertifikat.</p>
+<h2>HTTP/3</h2>
+<p>HTTP/3 braucht nginx Mainline mit <code>quic_bpf on</code>. Ohne das hängen Verbindungen nach einem Reload. Abschalten lässt es sich an einer Stelle mit <code>blog_web_http3: false</code>, das gilt auch für die Firewall-Regel. Prüfen:</p>
+<pre><code>curl --http3-only -sI https://&lt;host&gt;/ | head -1
+ps -eo args | grep &#x27;shutting down&#x27;     # must be empty about 30 s after a reload
+ps -eZ | grep nginx                    # httpd_t
+systemctl show nginx -p AmbientCapabilities -p CapabilityBoundingSet</code></pre>
+<h2>Firewall und Sperren</h2>
+<p>Offen sind 80 und 443 (TCP), 443 (UDP) und SSH auf 10022. Der Host leitet nichts weiter, und nginx darf nichts außer Grafana auf Loopback anrufen. Jede fail2ban-Jail hat ein eigenes nftables-Set-Paar.</p>
+<pre><code>fail2ban-client status
+fail2ban-client status nginx-bad-paths
+nft list set inet filter f2b_bad_paths4
+fail2ban-client set nginx-bad-paths unbanip &lt;address&gt;</code></pre>
+<p>Nie von einem eigenen Rechner aus verbotene Pfade aufrufen: Zwei Treffer sperren die Adresse für 24 Stunden.</p>
+<h2>Überwachung</h2>
+<p>Grafana ist unter <code>/grafana/</code> erreichbar, nur aus der Länderliste. Alarme kommen per Mail von Grafana und von Monit. Loki hält die Logs 14 Tage, die Zugriffslogs liegen 14 Tage auf der Platte. Besucherzahlen liegen nur als Tagessummen in <code>/var/lib/visitor-stats/</code>.</p>
+<h2>Sicherung</h2>
+<p>Eine Backup-Maschine zieht jede Nacht die Fassungen, Zertifikate, Besucherzahlen und SSH-Hostschlüssel und versioniert sie mit rdiff-backup. Monit warnt, wenn die letzte Sicherung älter als drei Tage ist. Die Beiträge liegen zusätzlich in Git. Einzelheiten stehen in <code>scripts/blog-backup/README.md</code>.</p>
+<h2>Neu aufsetzen</h2>
+<p>Frisches AlmaLinux 10, <code>ansible_port: 22</code>, Playbook starten. Es startet den Server einmal neu und läuft auf Port 10022 weiter. Danach <code>ansible_port</code> auf 10022 setzen und die Seite deployen. Die Beiträge brauchen dafür keine Sicherung, nur das Git-Repository.</p>
+<h2>Fehlersuche</h2>
+<p>Ein Dienst kann „active“ sein und trotzdem in der falschen SELinux-Domäne laufen. Nach jeder Änderung an Unit oder Sandbox deshalb <code>ps -eZ</code> prüfen.</p>
+<pre><code>systemctl status nginx
+nginx -t
+journalctl -u nginx -n 50
+tail -f /var/log/nginx/error.log
+ausearch -m avc -ts recent --input-logs &lt;/dev/null
+monit summary</code></pre>
+</body></html>

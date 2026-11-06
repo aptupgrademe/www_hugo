@@ -9,18 +9,12 @@
 # enforced. That is the learning phase: collect the AVCs for some days,
 # turn them into reviewed allow rules in the .te templates, then set this
 # to false. Never generate the rules blindly with audit2allow.
-# 2026-10-20: the blog enforces (rules reviewed from one day incl. a reboot,
-# checked with audit2why and service restarts: 0 new AVCs). The Nextcloud
-# hosts kept learning; 2026-10-21 they enforce too, two days early: >12 h
-# without a single AVC for Grafana, Prometheus and node_exporter, and
-# mysqld_exporter - whose module had no rules at all until then - 0 AVCs
-# after its rules (1.1.0) and a restart. The Loki alert on enforcing
+# 2026-10-20: enforcing (rules reviewed from one day incl. a reboot, checked
+# with audit2why and service restarts: 0 new AVCs). The Loki alert on enforcing
 # denials ("permissive=0") mails anything that was still missed.
 selinux_monitoring_permissive: false
 
-# Which modules a host gets: mysqld_exporter runs on the Nextcloud hosts
-# only (the blog has it as a sidecar in the MariaDB pod).
-selinux_monitoring_modules: "{{ ['prometheus', 'node_exporter', 'grafana'] + (['mysqld_exporter'] if stack == 'nextcloud' else []) }}"
+selinux_monitoring_modules: [prometheus, node_exporter, grafana]
 
 # Service unit per module (restarted once its executable got the new label,
 # so the running process enters the domain).
@@ -28,4 +22,3 @@ selinux_monitoring_units:
   prometheus: prometheus
   node_exporter: node_exporter
   grafana: grafana-server
-  mysqld_exporter: mysqld_exporter

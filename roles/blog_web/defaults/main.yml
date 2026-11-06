@@ -1,0 +1,20 @@
+---
+# Static site served directly by nginx on the host.
+blog_web_root: /srv/blog
+blog_web_deploy_user: blogdeploy
+# Public half of the key that may publish; it can only run blog-deploy.
+blog_web_deploy_pubkey: ""
+# All names on the certificate. The first one is the canonical host.
+blog_web_tls_names: ["{{ blog_hostname }}"]
+# Other names answering with a redirect to the canonical host.
+blog_web_redirect_names: "{{ blog_web_tls_names[1:] }}"
+# false on a host whose DNS does not point at it (test VM): self-signed only.
+blog_web_acme_enabled: true
+blog_web_acme_email: "{{ email }}"
+# HTTP/3 (QUIC). Needs UDP 443 in common_firewall, which reads the same switch.
+blog_web_http3: true
+blog_web_tls_dir: /etc/nginx/tls
+blog_web_acme_webroot: /var/lib/acme-webroot
+blog_web_geo_file: /etc/nginx/geo/admin-geo.conf
+# Report-only: it logs in the browser, blocks nothing.
+blog_web_csp_report_only: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; media-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"

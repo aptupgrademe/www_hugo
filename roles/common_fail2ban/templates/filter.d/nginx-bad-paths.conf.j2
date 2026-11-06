@@ -1,0 +1,14 @@
+# Managed by Ansible – do not edit manually
+# Zero-tolerance: bans IPs that request known-malicious paths.
+# These paths are never legitimately accessed on this server.
+# Log source: /var/log/nginx/access.log
+#
+# Covered: env/git/AWS credential files, PHP info, WP-config backups,
+#          the former WordPress login (gone, only attackers still ask), CGI bins, phpMyAdmin, web shells, SpringBoot actuator, routers.
+
+# fail2ban cuts the timestamp out of the line before matching, so the pattern
+# must not expect the brackets to contain anything.
+[Definition]
+failregex = ^<HOST> - \S+ [^"]*"\S+\s+(?:/\.env\b|/wp-login\.php|/wp-admin\b|/\.git/|/\.aws/|/phpinfo\.php|/wp-config\.php\.bak|/wp-config\.bak|/wp-config\.php~|/cgi-bin/|/phpmyadmin|/pma/|/adminer|/shell\.php|/c99\.php|/alfa[^/ ]*\.php|/webshell|/setup\.php|/install\.php|/xmlrpc\.php|/boaform/|/actuator/|/owa/|/remote/fgt_lang|/GponForm/)
+
+ignoreregex =

@@ -7,8 +7,7 @@
 # sandboxed: the unit has ProtectSystem=strict - the drop-in then also opens
 # the textfile directory, or heartbeat-mark fails on a read-only file system.
 heartbeat_units:
-  - {unit: ssh-login-alert.service,           task: ssh_login_alert,   max_age: 900,    stack: all}
-  - {unit: fail2ban-ingress-logwatch.service, task: f2b_logwatch,      max_age: 900,    stack: all}
-  - {unit: ssh-geo-update.service,            task: ssh_geo_update,    max_age: 691200, stack: all}
-  - {unit: dnf-automatic-install.service,     task: dnf_automatic,     max_age: 108000, stack: all}
-  - {unit: visitor-stats-daily.service,       task: visitor_stats,     max_age: 108000, stack: wordpress, sandboxed: true}
+  - {unit: ssh-login-alert.service,           task: ssh_login_alert,   max_age: 900}
+  - {unit: ssh-geo-update.service,            task: ssh_geo_update,    max_age: 691200}
+  - {unit: dnf-automatic-install.service,     task: dnf_automatic,     max_age: 108000}
+  - {unit: visitor-stats-daily.service,       task: visitor_stats,     max_age: 108000, sandboxed: true}

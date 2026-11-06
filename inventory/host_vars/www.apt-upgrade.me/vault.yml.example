@@ -1,33 +1,17 @@
 ---
-# www.apt-upgrade.me – Sensitive credentials (WordPress blog)
-# 1. Copy this file:  cp vault.yml.example vault.yml
-# 2. Fill in your values below
-# 3. Encrypt before committing to your private repo:
-#      ansible-vault encrypt inventory/host_vars/www.apt-upgrade.me/vault.yml
+# =============================================================================
+# Sensitive values. Copy to vault.yml, fill in, encrypt:
+#   ansible-vault encrypt inventory/host_vars/<host>/vault.yml
+# =============================================================================
 
-# --- Let's Encrypt ---
+# Receives all alerts and is the Let's Encrypt account address
 email: "admin@example.de"
 
-# --- MariaDB ---
-mysql_root_password: "changeme"
-
-# --- WordPress database ---
-blog_db_pass: "changeme"
-
-# Read-only account for the mysqld_exporter metrics sidecar. Kept separate
-# from the root password on purpose: the exporter container can read its own
-# credentials file, and it only needs PROCESS/REPLICATION CLIENT plus SELECT
-# on performance_schema. The user is created automatically by the playbook.
-blog_db_exporter_pass: "changeme"
-
-# --- WordPress admin account ---
-blog_admin_user: "admin"
-blog_admin_pass: "changeme"
-
 # --- Grafana ---
-grafana_basic_auth_user: "admin"
-grafana_admin_pass:      "changeme"
+# Admin login name and password, also used by the playbook for its API calls
+grafana_basic_auth_user: "changeme"
+grafana_admin_pass: "changeme"
 
-# --- Mail / SMTP ---
-mail_smtpname:     "homelab@example.de"
+# --- SMTP relay for system mails ---
+mail_smtpname: "server@example.de"
 mail_smtppassword: "changeme"

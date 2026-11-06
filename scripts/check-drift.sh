@@ -3,8 +3,8 @@
 # Drift check: what would a real playbook run change on a host right now?
 #
 #   scripts/check-drift.sh <playbook> <host> [more ansible-playbook args]
-#   scripts/check-drift.sh nextcloud-k3s.yml cvjm
-#   scripts/check-drift.sh blog.yml www.apt-upgrade.me --tags blog_k3s_deploy
+#   scripts/check-drift.sh blog.yml test
+#   scripts/check-drift.sh blog.yml www.example.de --tags blog_web
 #
 # Runs the playbook with --check --diff (nothing is changed on the host) and
 # prints only the tasks that would change, with their diff. Exit code 0 = no
@@ -44,22 +44,7 @@ try:
 except ValueError:
     print(raw[-3000:]); print("\n!! check run produced no result (see above)"); sys.exit(2)
 
-import difflib, yaml
-
-NOISE = ("managedFields", "resourceVersion", "generation", "uid", "creationTimestamp")
-def text(obj):
-    """Kubernetes objects come as dicts: drop server bookkeeping, render YAML."""
-    if isinstance(obj, dict):
-        obj = json.loads(json.dumps(obj))
-        md = obj.get("metadata", {})
-        for k in NOISE:
-            md.pop(k, None)
-        md.get("annotations", {}).pop("kubectl.kubernetes.io/last-applied-configuration", None)
-        if md.get("annotations") == {}:
-            md.pop("annotations")
-        obj.pop("status", None)
-        return yaml.safe_dump(obj, default_flow_style=False, sort_keys=True)
-    return str(obj)
+import difflib
 
 def diffs(r):
     """yield readable diff text of one result (or of each loop item)."""
@@ -80,7 +65,7 @@ def diffs(r):
             if "prepared" in d:
                 yield label, d["prepared"]
             elif "before" in d or "after" in d:
-                b, a = text(d.get("before", "")), text(d.get("after", ""))
+                b, a = str(d.get("before", "")), str(d.get("after", ""))
                 yield label, "\n".join(difflib.unified_diff(b.splitlines(), a.splitlines(),
                                                             d.get("before_header", "before"),
                                                             d.get("after_header", "after"), lineterm=""))

@@ -1,0 +1,40 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# The only command the deploy key may run (forced in authorized_keys). It accepts
+# an rsync upload into incoming/ and "activate <id>", which turns incoming/ into a
+# release and switches the site atomically. Nothing else gets through.
+set -euo pipefail
+ROOT={{ blog_web_root }}
+KEEP=5
+cmd=${SSH_ORIGINAL_COMMAND:-}
+
+case "$cmd" in
+  "rsync --server "*)
+    # Exactly: our flags, then ". <incoming>/". No --rsh, no other target.
+    if [[ "$cmd" =~ ^rsync\ --server\ -[A-Za-z.,=]+(\ --delete(-[a-z]+)?)?(\ --no-[a-z-]+)*(\ --chmod=[A-Za-z0-9,=]+)?\ \.\ $ROOT/incoming/?$ ]]; then
+      exec $cmd
+    fi
+    echo "blog-deploy: rsync arguments refused" >&2; exit 2 ;;
+  "activate "*)
+    id=${cmd#activate }
+    [[ "$id" =~ ^[0-9]{8}-[0-9]{6}$ ]] || { echo "blog-deploy: bad release id" >&2; exit 2; }
+    [ -f "$ROOT/incoming/index.html" ] || { echo "blog-deploy: incoming/ has no index.html" >&2; exit 3; }
+    [ ! -e "$ROOT/releases/$id" ] || { echo "blog-deploy: release exists" >&2; exit 3; }
+    cp -al "$ROOT/incoming" "$ROOT/releases/$id"
+    ln -sfn "releases/$id" "$ROOT/.current.new"
+    mv -T "$ROOT/.current.new" "$ROOT/current"
+    ls -1d "$ROOT"/releases/* | sort | head -n -"$KEEP" | while read -r old; do
+      [ "$(readlink -f "$ROOT/current")" = "$old" ] || rm -rf -- "$old"
+    done
+    echo "active: $id" ;;
+  rollback)
+    prev=$(ls -1d "$ROOT"/releases/[0-9]* | sort | grep -v "^$(readlink -f "$ROOT/current")\$" | tail -1)
+    [ -n "$prev" ] || { echo "blog-deploy: nothing to roll back to" >&2; exit 3; }
+    ln -sfn "releases/$(basename "$prev")" "$ROOT/.current.new"
+    mv -T "$ROOT/.current.new" "$ROOT/current"
+    echo "active: $(basename "$prev")" ;;
+  status)
+    basename "$(readlink -f "$ROOT/current")" ;;
+  *)
+    echo "blog-deploy: command refused" >&2; exit 2 ;;
+esac

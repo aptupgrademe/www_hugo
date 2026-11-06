@@ -1,12 +1,7 @@
 #!/usr/sbin/nft -f
 # Managed by Ansible (common_firewall) – do not edit manually.
 
-# Replace ONLY our own table. kube-proxy, flannel and K3s's policy controller
-# keep their rules in nftables too (ip nat/filter/mangle, ...); the old
-# "flush ruleset" wiped those on every firewall reload, breaking Service
-# ClusterIP traffic (Nextcloud -> MariaDB/Redis) for 30-90 s until they
-# re-synced. Declaring the table first makes the delete safe on a fresh boot.
-# nft -f runs the whole file as one atomic transaction: no gap without rules.
+# Replace ONLY our own table, one transaction.
 table inet filter
 delete table inet filter
 
@@ -158,40 +153,6 @@ table inet filter {
 
 
     # -------------------------------------------------------------------------
-    # K3s / Kubernetes CNI exceptions
-    # Must appear before the private-range DROP rules below so that pod traffic
-    # ({{ k3s_pod_cidr }}) is not inadvertently blocked.
-    # -------------------------------------------------------------------------
-
-    # Allow K3s pods to reach the K3s API server and kubelet.
-    # ClusterIP 10.43.0.1:443 is DNAT-rewritten by kube-proxy to {{ server_ipv4 }}:6443.
-    # metrics-server scrapes kubelet metrics via {{ server_ipv4 }}:10250.
-    # Without these rules the RFC-1918 drop below silently blocks pod→host traffic.
-    ip saddr {{ k3s_pod_cidr }} tcp dport { 6443, 10250 } accept
-
-{% if stack == 'nextcloud' %}
-    # Allow K3s pods to reach MariaDB on the host (Nextcloud: next_mariadb runs on host)
-    ip saddr {{ k3s_pod_cidr }} tcp dport 3306 accept
-
-    # Allow K3s pods to reach Redis on the host (Nextcloud: next_redis runs on host)
-    ip saddr {{ k3s_pod_cidr }} tcp dport 6379 accept
-
-{% endif %}
-    # Allow the host to reach its own services via the public IP.
-    # ingress-nginx (hostNetwork) uses server_ipv4 as source when forwarding to
-    # ExternalServices (e.g. Grafana :3000); kubelet probes ingress-nginx on :10254.
-    ip saddr {{ server_ipv4 }} tcp dport { 3000, 10254 } accept
-
-    # Allow pods to reach the host's own HTTP(S) port (hairpin: pod -> node's
-    # public IP -> ingress-nginx hostNetwork). Required for cert-manager's
-    # HTTP-01 self-check, which runs from inside the pod network and requests
-    # the challenge over the site's public hostname before telling Let's
-    # Encrypt to validate. Without this, the self-check times out forever and
-    # certificates can never renew, even though the challenge is served
-    # correctly to real (external) validators.
-    ip saddr {{ k3s_pod_cidr }} tcp dport { 80, 443 } accept
-
-    # -------------------------------------------------------------------------
     # Block private and reserved IPv4 source ranges
     # -------------------------------------------------------------------------
     ip saddr {
@@ -215,22 +176,14 @@ table inet filter {
     } accept
 
     # -------------------------------------------------------------------------
-    # Incoming: web server (ingress-nginx with hostNetwork=true)
+    # Incoming: web server (nginx)
     # -------------------------------------------------------------------------
     ip  daddr {{ server_ipv4 }} tcp dport { 80, 443 } ct state new accept
     ip6 daddr {{ server_ipv6 }} tcp dport { 80, 443 } accept
-{% if ingress_http3_enabled | bool %}
-    # UDP 443 = QUIC/HTTP3 (ingress_http3_enabled). The F5 controller has no
-    # HTTP/3 option of its own, but its nginx has the module; the master
-    # Ingresses add "listen 443 quic" in their server-snippets, and the
-    # controller runs with hostNetwork, so nginx binds UDP 443 directly (no
-    # Service port needed). Replies are "established" for conntrack (UDP is
-    # tracked too), so the output chain needs no rule.
+{% if blog_web_http3 | default(true) | bool %}
+    # UDP 443 = QUIC/HTTP3 (blog_web). Replies are "established" for conntrack.
     ip  daddr {{ server_ipv4 }} udp dport 443 ct state new accept
     ip6 daddr {{ server_ipv6 }} udp dport 443 accept
-{% else %}
-    # UDP 443 (QUIC/HTTP3) not opened: ingress_http3_enabled is off on this
-    # host, so no quic listener exists behind the port.
 {% endif %}
 
     # Incoming: management (SSH on non-standard port)
@@ -256,7 +209,7 @@ table inet filter {
 
     # -------------------------------------------------------------------------
     # Port-scan detection. Everything that reaches this point is about to be
-    # dropped by policy (a closed port), and private/pod sources were already
+    # dropped by policy (a closed port), and private sources were already
     # handled above, so normal traffic is never counted. A source sending more
     # than 30 new-connection SYNs per minute to closed ports lands in scanbanN
     # for 1 h, checked at the top of this chain, i.e. for ALL ports incl. web
@@ -273,71 +226,10 @@ table inet filter {
   }
 
   # ===========================================================================
-  # PREROUTING – close the NodePort back door (after conntrack, before kube-proxy DNAT)
-  # ---------------------------------------------------------------------------
-  # kube-proxy DNATs the NodePort range (30000-32767) for ANY dst-type LOCAL
-  # address, including {{ server_ipv4 }}. That DNAT'd traffic is rewritten to a
-  # pod IP and then lands in the FORWARD chain (NOT input), where the
-  # "ip daddr {{ k3s_pod_cidr }} accept" rule waves it straight through — so
-  # every NodePort was in fact reachable from the internet, bypassing the input
-  # chain entirely (verified: the mysqld/php-fpm exporters on :30104/:30253
-  # answered from outside). Prometheus scrapes them via 127.0.0.1 only, so the
-  # public IPs have no business exposing NodePorts at all. Matches on the
-  # public destination IP only: loopback (127.0.0.1, Prometheus) and
-  # pod/ClusterIP destinations are untouched, and this also protects any
-  # future NodePort.
-  #
-  # Only NEW connections are dropped, and the chain runs at -150: after
-  # conntrack (-200), before the DNAT at dstnat (-100). It used to run at raw
-  # (-300), before conntrack, and dropped every packet to 30000-32767 - also
-  # the REPLIES to pod traffic: flannel masquerades pod egress with
-  # --random-fully over the whole port space, so ~4 % of outgoing pod
-  # connections got a public source port in the NodePort range and their
-  # SYN-ACK was thrown away (connect timeouts to GitHub / the app store from
-  # every K3s host, 2026-07-31 .. 2026-09-30; found in the sofie acceptance test:
-  # every conntrack entry stuck in SYN_SENT/UNREPLIED had its NAT port there).
-  # Replies are "established" for conntrack, so they now pass.
-  # ===========================================================================
-  chain prerouting {
-    type filter hook prerouting priority -150; policy accept;
-    ip  daddr {{ server_ipv4 }} tcp dport 30000-32767 ct state new drop
-    ip6 daddr {{ server_ipv6 }} tcp dport 30000-32767 ct state new drop
-  }
-
-  # ===========================================================================
-  # FORWARD – K3s inter-pod and pod-to-service traffic
-  # K3s (kube-proxy, flannel, its network policy controller) keeps its own
-  # KUBE-* chains outside this table, in nftables tables of their own via
-  # iptables-nft (all hosts since 2026-10-19; the blog used iptables-legacy
-  # before, and Calico's cali-* chains are gone). Either way the kernel
-  # evaluates them alongside this table at the same hooks, so this chain only
-  # needs to pass pod CIDR traffic.
+  # FORWARD – this host routes nothing
   # ===========================================================================
   chain forward {
     type filter hook forward priority filter; policy drop;
-
-    ct state invalid drop
-
-    # Blocklist check on forwarded traffic
-    ip  saddr @banned4 drop
-    ip6 saddr @banned6 drop
-{% for short in fail2ban_nft_jails.values() | sort %}
-    ip  saddr @f2b_{{ short }}4 drop
-    ip6 saddr @f2b_{{ short }}6 drop
-{% endfor %}
-    ip  saddr @scanban4 drop
-    ip6 saddr @scanban6 drop
-
-    # K3s pod traffic (both directions)
-    ip saddr {{ k3s_pod_cidr }} accept
-    ip daddr {{ k3s_pod_cidr }} accept
-
-    # IPv6 link-local multicast between pods (router solicitations, MLD
-    # reports to ff02::/16 on cni0): the pod network is IPv4-only, so these
-    # were always dropped - only no longer logged (~1,000 lines a day per
-    # host, 2026-10-20). Same verdict as the policy, just silent.
-    ip6 daddr ff02::/16 drop
-
     limit rate 2/minute log prefix "nftables DROP FWD: " level warn flags all
   }
 
@@ -351,6 +243,11 @@ table inet filter {
     ct state established,related accept
     ct state invalid drop
 
+    # nginx serves files and proxies to Grafana on loopback. It has no reason to
+    # connect anywhere else, so a compromised worker cannot call home.
+    meta skuid "nginx" ct state new limit rate 5/minute log prefix "nft-nginx-egress: "
+    meta skuid "nginx" ct state new drop
+
     # ICMPv6 output is required for IPv6 (NDP, path MTU discovery, etc.)
     ip6 nexthdr ipv6-icmp accept
 
@@ -359,8 +256,8 @@ table inet filter {
     #
     # fw_dhcp4 / fw_dhcp6 are detected by the role from NetworkManager
     # (ipv4.method / ipv6.method of the uplink). Where DHCP is in use, these
-    # rules are PFLICHT: without them the IPv4 lease renewal fails and the
-    # address can be lost. Hosts with a static config (e.g. Contabo) get no
+    # rules are mandatory: without them the IPv4 lease renewal fails and the
+    # address can be lost. Hosts with a static config get no
     # DHCP rules at all - nothing to renew, nothing to allow.
     # -------------------------------------------------------------------------
 {% if fw_dhcp4 | default(true) %}
@@ -383,25 +280,17 @@ table inet filter {
     # HTTP / HTTPS (package downloads, ACME, external APIs)
     # No outgoing QUIC (udp dport 443): everything calling out from this host
     # (dnf, curl in Ansible tasks, the ACME client) speaks plain HTTP/TCP, and
-    # nothing here is a browser that would opportunistically upgrade to
-    # HTTP/3. Incoming HTTP/3 (input chain) needs no rule here: its replies
-    # are conntrack-established.
+    # nothing here is a browser that would upgrade to HTTP/3.
     tcp dport { 80, 443 } ct state new accept
 
-    # SMTP submission (msmtp – rkhunter/cron/dnf-automatic on both blog and nextcloud hosts)
+    # SMTP submission (msmtp – rkhunter/cron/dnf-automatic )
     tcp dport 465 ct state new accept  # TLS
     tcp dport 587 ct state new accept  # STARTTLS
 
-    # K3s pod network – kubelet liveness/readiness probes reach pods via cni0 (OUTPUT, not FORWARD)
-    ip daddr {{ k3s_pod_cidr }} ct state new accept
 
-    # K3s API server (hostNetwork pods + kubectl)
-    tcp dport 6443 ct state new accept
-
-    # MLD reports the kernel sends on the pods' veth interfaces (ff02::16,
-    # behind a hop-by-hop header, so "nexthdr ipv6-icmp" above never matches
-    # them): dropped as before, but no longer logged (~430 lines a day per
-    # host, 2026-10-20). DHCPv6 to ff02::1:2 is accepted further up.
+    # MLD reports the kernel sends (ff02::16, behind a hop-by-hop header, so
+    # "nexthdr ipv6-icmp" above never matches them): dropped, but not logged
+    # (~430 lines a day per host, 2026-10-20). DHCPv6 to ff02::1:2 is accepted further up.
     ip6 daddr ff02::/16 drop
 
     # Log everything else before the policy drop (rate-limited)

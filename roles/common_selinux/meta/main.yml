@@ -4,7 +4,7 @@
 galaxy_info:
   role_name: common_selinux
   author: raphael
-  description: SELinux enforcing + container_file_t contexts for the K3s HostPath volumes of one stack
+  description: SELinux enforcing
   license: MIT
   min_ansible_version: "2.16"
   platforms:

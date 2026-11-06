@@ -176,7 +176,7 @@
           # the threshold belongs in the evaluator of query B.
           # "condition" names the refId that decides the alert. Without it
           # Grafana logs "condition must not be empty" on every evaluation and
-          # never fires; execErrState OK hid that (found 2026-09-23 on cvjm).
+          # never fires; execErrState OK hid that (found 2026-09-23).
           return {
               "uid": uid,
               "title": title,
@@ -278,7 +278,7 @@
           # the two disk rules above were blind for two days.
           # Only the collectors the dashboards and rules use: on these VMs
           # many others (nfs, zfs, nvme, infiniband, pressure - PSI is off in
-          # the EL9 kernel, ...) always report 0 because the hardware or
+          # the kernel, ...) always report 0 because the hardware or
           # feature does not exist.
           make_rule(
               "alert-node-collector",
@@ -288,78 +288,15 @@
               "Ein node_exporter-Collector schlägt fehl (journalctl -u node_exporter) – seine Messwerte fehlen, Alarme darauf bleiben stumm.",
               "node_collector_ok",
           ),
-          # Container rules (common_kube_metrics). max() turns the per-
-          # container series into one value; the dashboard
-          # "Container-Ressourcen" shows which container it was.
+          # nginx (blog_web). The site is only files, so the exporter being up
+          # and nginx answering is what matters.
           make_rule(
-              "alert-container-memory",
-              "Container-Speicher > 90% vom Limit",
-              'max(sum by (namespace, pod, container) (container_memory_working_set_bytes) '
-              '/ on (namespace, pod, container) kube_pod_container_resource_limits{resource="memory"}) * 100',
-              90, "gt",
-              "Ein Container nutzt mehr als 90% seines Speicherlimits – OOM-Kill droht (Dashboard Container-Ressourcen).",
-              "container_mem_pct",
-          ),
-          make_rule(
-              "alert-container-throttling",
-              "Container-CPU gedrosselt > 50%",
-              'max(sum by (namespace, pod, container) (rate(container_cpu_cfs_throttled_periods_total[5m])) '
-              '/ sum by (namespace, pod, container) (rate(container_cpu_cfs_periods_total[5m]))) * 100',
-              50, "gt",
-              "Ein Container wird seit 5 min in mehr als der Hälfte der Perioden gebremst – CPU-Limit zu knapp?",
-              "container_throttled_pct",
-          ),
-          make_rule(
-              "alert-container-oom",
-              "Container OOM-Kill",
-              "max(increase(container_oom_events_total[15m])) or vector(0)",
-              0, "gt",
-              "Ein Container wurde wegen Speichermangel beendet (OOMKilled) – Limit prüfen.",
-              "container_oom",
-          ),
-          make_rule(
-              "alert-container-crashloop",
-              "Container startet wiederholt neu",
-              "max(increase(kube_pod_container_status_restarts_total[15m])) or vector(0)",
-              2, "gt",
-              "Ein Container ist in 15 min mehr als zweimal neu gestartet (Crash-Schleife?).",
-              "container_restarts",
-          ),
-          # PHP-FPM (php-fpm-exporter in the app pod, both stacks). A request
-          # in the listen queue waits for a free worker. Short peaks are
-          # normal (blog once 30 for one minute, the larger Nextcloud 17 single minutes in
-          # 14 days); a queue that stays 5 min never happened up to
-          # 2026-10-21 - then pm.max_children is too small for the load.
-          make_rule(
-              "alert-phpfpm-queue",
-              "PHP-FPM: Anfragen warten",
-              "max(phpfpm_listen_queue)",
-              0, "gt",
-              "Seit 5 min warten Anfragen auf einen freien PHP-FPM-Worker – pm.max_children zu knapp? (Dashboard PHP-FPM)",
-              "phpfpm_listen_queue",
-          ),
-          # Early warnings before the queue above fills (2026-10-26).
-          # phpfpm_max_children_reached counts how often FPM wanted another
-          # worker but was at pm.max_children (per pod, resets on restart -
-          # increase() handles that). The 80 % rule needs pm.max_children
-          # itself, which the exporter does not export: Nextcloud takes
-          # nextcloud_fpm_max_children (fpm-pool-cm.yml.j2), the blog the fixed
-          # 12 in blog_k3s_deploy/templates/nginx-cm.yml.j2 - keep in sync.
-          make_rule(
-              "alert-phpfpm-max-children",
-              "PHP-FPM: alle Worker belegt",
-              "max(increase(phpfpm_max_children_reached[15m])) or vector(0)",
-              0, "gt",
-              "PHP-FPM hat pm.max_children erreicht ({{ (nextcloud_fpm_max_children | default(12)) if stack == 'nextcloud' else 12 }} Worker) – neue Anfragen warten (Dashboard PHP-FPM).",
-              "phpfpm_max_children_reached",
-          ),
-          make_rule(
-              "alert-phpfpm-busy",
-              "PHP-FPM: über 80 % der Worker belegt",
-              "max(phpfpm_active_processes) / {{ (nextcloud_fpm_max_children | default(12)) if stack == 'nextcloud' else 12 }} * 100",
-              80, "gt",
-              "Seit 5 min sind über 80 % der {{ (nextcloud_fpm_max_children | default(12)) if stack == 'nextcloud' else 12 }} PHP-FPM-Worker belegt – Last steigt (Meeting? Dashboard PHP-FPM).",
-              "phpfpm_busy_pct",
+              "alert-nginx-down",
+              "nginx antwortet nicht",
+              "min(nginx_up)",
+              1, "lt",
+              "Der nginx-Exporter meldet nginx seit 5 min als nicht erreichbar.",
+              "nginx_up",
           ),
           # Heartbeats of the periodic jobs (heartbeat-mark, common_node_exporter):
           # a task older than its own max age has stopped running or fails.
@@ -370,7 +307,7 @@
               "Regelmäßiger Job meldet sich nicht",
               "max(time() - job_heartbeat_timestamp_seconds - job_heartbeat_max_age_seconds)",
               0, "gt",
-              "Ein regelmäßiger Job (AIDE, rkhunter, ClamAV, auditd-Notifier, SSH-Login-Alarm …) hat sich länger nicht gemeldet als erlaubt – läuft nicht mehr oder schlägt fehl (Explore: job_heartbeat_timestamp_seconds).",
+              "Ein regelmäßiger Job (AIDE, rkhunter, auditd-Notifier, SSH-Login-Alarm …) hat sich länger nicht gemeldet als erlaubt – läuft nicht mehr oder schlägt fehl (Explore: job_heartbeat_timestamp_seconds).",
               "heartbeat_overdue_s",
           ),
           # Dead man's switch for the mail path (2026-10-26): fires always,
@@ -386,25 +323,6 @@
               "Diese Mail kommt absichtlich einmal pro Woche von jedem Host. Bleibt sie aus, ist der Mailweg von Grafana gestört.",
               "heartbeat",
               {"severity": "info", "heartbeat": "weekly"},
-          ),
-          # Trivy (common_trivy). No rule on the findings themselves - the
-          # scan mails new ones once; these two say the scan is broken.
-          # Hosts without Trivy have no such series -> no data -> OK.
-          make_rule(
-              "alert-trivy-stale",
-              "Trivy-Scan veraltet",
-              "time() - max(trivy_last_run_timestamp_seconds)",
-              129600, "gt",
-              "Der nächtliche Trivy-Scan ist seit über 36 h nicht gelaufen (systemctl status trivy-scan).",
-              "trivy_age_s",
-          ),
-          make_rule(
-              "alert-trivy-failed",
-              "Trivy-Scan fehlgeschlagen",
-              'min({__name__=~"trivy_image_scan_ok|trivy_db_update_ok"})',
-              1, "lt",
-              "Trivy konnte die Datenbank nicht laden oder ein Image nicht scannen (journalctl -u trivy-scan).",
-              "trivy_ok",
           ),
       ]
 

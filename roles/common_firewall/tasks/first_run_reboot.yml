@@ -11,7 +11,7 @@
 # module with task-level "vars: ansible_port: 10022" - but task vars apply
 # to the whole task, including the connection that issues the reboot, so it
 # failed right away with "port 10022: Connection refused" and the host was
-# never rebooted (found on the sofie VPS, 2026-09-29). Fire-and-forget over
+# never rebooted (found 2026-09-29). Fire-and-forget over
 # port 22, then switch the port and wait for the host to come back.
 - name: First run | Reboot (sent over the current port-22 connection)
   ansible.builtin.shell: sleep 2 && systemctl reboot

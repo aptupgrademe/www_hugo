@@ -64,8 +64,7 @@
   failed_when: false
   loop: "{{ monit_candidate_services }}"
 
-# Only monitor services that actually exist here, so the same role is safe on
-# both blog and nextcloud hosts (e.g. mysqld_exporter runs on nextcloud only).
+# Only monitor services that actually exist here.
 - name: Monit | Build the list of present services
   ansible.builtin.set_fact:
     monit_present_services: >-
@@ -87,7 +86,6 @@
   loop:
     - monit-check-service.sh
     - monit-check-firewall.sh
-    - monit-check-pods.sh
     - monit-check-certs.sh
     - monit-check-f2b-jails.sh
     - monit-check-f2b-sets.sh
@@ -126,7 +124,7 @@
 # config.
 # systemd sandboxing (since 2026-10-19; "systemd-analyze security monit" was
 # 9.6 UNSAFE with the plain distro unit). Monit runs as root and must keep
-# doing its job: systemctl start/stop (fail2ban), nft list, k3s kubectl,
+# doing its job: systemctl start/stop (fail2ban), nft list,
 # fail2ban-client, openssl to the certificate endpoints, mail via msmtp.
 # None of that writes below /usr, /boot or /etc, reads home directories or
 # touches kernel tunables, modules or logs - so those are locked. Not set on

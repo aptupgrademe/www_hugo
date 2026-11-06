@@ -8,8 +8,10 @@ loki_http_port: 3100
 loki_grpc_port: 9096
 alloy_http_port: 12345
 
-# Files Alloy tails besides the journal and the pod logs. AVC denials are
+# Files Alloy tails besides the journal. AVC denials are
 # NOT in the journal here (auditd owns the audit socket), hence audit.log.
 loki_file_sources:
   - { path: /var/log/audit/audit.log, job: audit }
   - { path: /var/log/fail2ban.log, job: fail2ban }
+  - { path: /var/log/nginx/access.log, job: nginx }
+  - { path: /var/log/nginx/error.log, job: nginx_error }

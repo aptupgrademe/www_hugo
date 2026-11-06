@@ -6,12 +6,6 @@ fail2ban_bantime:  3600    # seconds a bad IP stays banned (1 h)
 fail2ban_findtime:  600    # observation window (10 min)
 fail2ban_maxretry:    5    # allowed failures before ban
 
-# UNUSED: no task or template reads these two switches - all seven jails are
-# always enabled (jail.local.j2). Kept so old overrides are not typos; safe to
-# delete.
-fail2ban_jail_nextcloud: false
-fail2ban_jail_wordpress: false
-
 # Extra IPs/CIDRs to never ban (e.g. Ansible controller, home IP).
 # Set in host_vars/<host>/vars.yml – never put secrets here.
 # Example: fail2ban_ignoreip_extra: "1.2.3.4 5.6.7.0/24"

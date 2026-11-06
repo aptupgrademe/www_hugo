@@ -83,19 +83,17 @@
     line: "disable_initial_admin_creation = false"
     state: present
 
-# Bind to all interfaces so K3s pods can reach Grafana via the host IP
-# (the K3s External Service Endpoint points to the host's public IP).
-# Access is restricted to the K3s pod CIDR by nftables (common_firewall).
-- name: Grafana | Bind to all interfaces (required for K3s pod access)
+# Only nginx on this host talks to Grafana.
+- name: Grafana | Bind to localhost
   ansible.builtin.lineinfile:
     path: /etc/grafana/grafana.ini
     regexp: '^;?\s*http_addr\s*='
-    line: "http_addr = 0.0.0.0"
+    line: "http_addr = 127.0.0.1"
     state: present
   notify: restart grafana
 
-# Required so Grafana generates correct redirect URLs when served via K3s Ingress at /grafana/
-- name: Grafana | Set root_url for K3s Ingress subpath proxy
+# Required so Grafana generates correct redirect URLs when served via nginxs at /grafana/
+- name: Grafana | Set root_url for the nginx subpath proxy
   ansible.builtin.lineinfile:
     path: /etc/grafana/grafana.ini
     regexp: '^;?\s*root_url\s*='

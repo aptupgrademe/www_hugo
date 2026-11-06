@@ -20,11 +20,11 @@ exclude_paths:
 
 skip_list:
   # Role variables are shared on purpose: group_vars/host_vars set e.g.
-  # nextcloud_hostname once for several roles. A per-role prefix would mean
-  # renaming ~380 variables, including the ones in every host's vars.yml.
+  # blog_hostname once for several roles. A per-role prefix would mean
+  # renaming every variable, including the ones in every host's vars.yml.
   - var-naming[no-role-prefix]
   # Task names start with the component, which is often lower-case by its
-  # own spelling: "cert-manager | ...", "notify_push | ...", "ingress-nginx | ...".
+  # own spelling: "nginx | ...", "dnf-automatic | ...", "auditd | ...".
   - name[casing]
   # "when: x.changed" instead of a handler is deliberate where order matters:
   # wait for a rollout right after the apply, not at the end of the play.

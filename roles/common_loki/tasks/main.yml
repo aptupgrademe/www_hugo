@@ -3,7 +3,7 @@
 # Role: common_loki
 # Purpose: Searchable logs next to the metrics. Loki (single binary,
 #          filesystem storage, 14 days) stores them, Grafana Alloy collects
-#          them: the systemd journal, all pod logs and audit.log/fail2ban.log.
+#          them: the systemd journal and audit.log/fail2ban.log.
 #          Grafana gets a "Loki" datasource and four log-based alert rules.
 #          Everything listens on 127.0.0.1 only.
 # =============================================================================
@@ -14,7 +14,7 @@
 #
 # Why Alloy needs CAP_DAC_READ_SEARCH: the package runs it as user "alloy"
 # in the groups adm and systemd-journal - enough for the journal, not for
-# audit.log (root 0600), fail2ban.log and the pod logs (root 0640). The
+# audit.log (root 0600) and fail2ban.log (root 0640). The
 # capability lets it READ any file, nothing else; it still cannot write
 # outside /var/lib/alloy. Running it as root would be the lazy alternative.
 #

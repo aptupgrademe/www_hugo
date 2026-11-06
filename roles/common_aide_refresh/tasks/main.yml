@@ -5,14 +5,14 @@
 #          playbook run, if this run actually changed anything AIDE watches.
 #
 # Without this, every playbook run that touches a package or a monitored
-# config file (nftables.conf, sysctl.d, modprobe.d, k3s binaries, ...) shows
+# config file (nftables.conf, sysctl.d, modprobe.d, ...) shows
 # up as a false "AIDE found differences" alert on the next scheduled check -
 # not a real finding, just the baseline not having caught up yet. Happened
 # twice in a row (2026-08-21 CIS hardening rollout, 2026-08-22/23 NFS/Samba
 # package removal + firewall change) before this role existed; manually
 # running `aide --update` after every relevant playbook run doesn't scale.
 #
-# Placed as the LAST role in the play (after blog_verify / nextcloud_verify)
+# Placed as the LAST role in the play (after blog_verify)
 # so it sees the fully-settled end state, not an intermediate one from
 # earlier in the run.
 # =============================================================================
@@ -87,6 +87,7 @@
   ansible.builtin.file:
     path: /var/lib/aide/aide.db.new.gz
     state: absent
+  changed_when: false   # a temp file of this very run
   when:
     - aide_db.stat.exists
     - aide_update.rc is defined

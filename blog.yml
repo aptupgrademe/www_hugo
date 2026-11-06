@@ -1,7 +1,7 @@
 ---
 # =============================================================================
 # Playbook: blog.yml
-# Provisions a WordPress blog on a fresh AlmaLinux 9 server.
+# Provisions the static blog on a fresh AlmaLinux 10 server.
 #
 # QUICK START – first-time setup on a new host
 # -----------------------------------------------------------------------------
@@ -17,7 +17,7 @@
 # 3. Ensure ansible_port is set to 22 in vars.yml (fresh server default).
 #
 # 4. Run the playbook:
-#      ansible-playbook blog.yml --limit <host> --ask-vault-pass
+#      ansible-playbook blog.yml --limit <host> --vault-password-file .vault_pass
 #    The first run reboots the server by itself once SSH and the firewall are
 #    configured (common_firewall/tasks/first_run_reboot.yml), reconnects on
 #    port 10022 and finishes the run there.
@@ -29,30 +29,23 @@
 # -----------------------------------------------------------------------------
 #
 #   # First-time setup (fresh server, ansible_port: 22) and every later run:
-#   ansible-playbook blog.yml --limit <host> --ask-vault-pass
+#   ansible-playbook blog.yml --limit <host> --vault-password-file .vault_pass
 #
 #   # Specific host examples:
-#   ansible-playbook blog.yml --limit test           --ask-vault-pass
-#   ansible-playbook blog.yml --limit www.example.de --ask-vault-pass
+#   ansible-playbook blog.yml --limit test           --vault-password-file .vault_pass
+#   ansible-playbook blog.yml --limit www.example.de --vault-password-file .vault_pass
 #
 #   # Only one role (every role has a tag with its own name):
-#   ansible-playbook blog.yml --limit <host> --tags blog_packages --ask-vault-pass
+#   ansible-playbook blog.yml --limit <host> --tags blog_packages --vault-password-file .vault_pass
 #
 #   # Dry run - show what would change, change nothing:
-#   ansible-playbook blog.yml --limit <host> --check --diff --ask-vault-pass
+#   ansible-playbook blog.yml --limit <host> --check --diff --vault-password-file .vault_pass
 #
 # Prerequisites:
 #   1. cp inventory/hosts.yml.example           inventory/hosts.yml
 #   2. cp inventory/host_vars/<h>/vars.yml.example  .../vars.yml  → fill in
 #   3. cp inventory/host_vars/<h>/vault.yml.example .../vault.yml → fill in
 #   4. ansible-vault encrypt inventory/host_vars/<host>/vault.yml
-#
-# SWITCHING BETWEEN BLOG AND NEXTCLOUD ON THE TEST SERVER
-# -----------------------------------------------------------------------------
-# The test server can run either blog.yml or nextcloud-k3s.yml.
-# Before switching scenarios, wipe the K3s state on the server:
-#   k3s-uninstall.sh && rm -rf /srv/wordpress-* /srv/nextcloud-*
-# Then run the desired playbook from scratch.
 #
 # ADDING A NEW BLOG HOST
 # -----------------------------------------------------------------------------
@@ -62,63 +55,38 @@
 # 4. Fill in vars.yml (IPs, hostname) and vault.yml (passwords)
 # 5. Follow the Quick Start steps above.
 # =============================================================================
-- name: Install and configure WordPress blog
+- name: Install and configure the static blog
   hosts: blog
-  # Which stack this play installs. Shared roles read it instead of asking the
-  # inventory group (the test host is in both groups), and the profile roles
-  # (common_selinux, common_clamav) pick their settings with it.
-  vars:
-    stack: wordpress
-  # gather_subset: only "min" – the sole facts actually used anywhere in
-  # this repo are kernel (blog_packages reboot check), distribution (common_firewall),
-  # fqdn/hostname (monit, MariaDB) and date_time, all part of "min" - read as
-  # ansible_facts['...'], not as top-level ansible_* variables (deprecated). network/
-  # virtual facts (interfaces, virtualization type) aren't referenced by any
-  # role, so skipping them saves the interface-enumeration/dmidecode time
-  # without losing anything actually used.
   gather_facts: true
   gather_subset:
     - min
   become: false
 
-
   roles:
-    - { role: common_version_check, tags: [common_version_check] }  # Pre-flight: show component versions + available updates
-    - { role: blog_packages,        tags: [blog_packages] }         # Host packages: nftables, SELinux tools, utilities only
-    - { role: common_ssh,           tags: [common_ssh] }            # SSH hardening (port, key-only auth)
-    - { role: common_firewall,      tags: [common_firewall] }       # nftables IPv4/IPv6 rules
-    - { role: common_sysctl,        tags: [common_sysctl] }         # Kernel tuning: TCP BBR, connection timeouts, backlog
-    - { role: common_cis_hardening, tags: [common_cis_hardening] }  # CIS AlmaLinux 9 Benchmark: AIDE, kernel modules, cron/sudo, mount options
-    - { role: common_selinux,       tags: [common_selinux] }  # SELinux enforcing + container_file_t for HostPath  ← before deploy!
-    - { role: common_k3s,           tags: [common_k3s] }            # K3s + Helm + cert-manager + nginx-ingress (F5)
-    - { role: common_kube_metrics,  tags: [common_kube_metrics] }   # Container metrics: cAdvisor scraper token + kube-state-metrics (NodePort 30808)
-    - { role: blog_k3s_deploy,      tags: [blog_k3s_deploy] }       # WordPress K8s objects; waits until MariaDB, Redis and WordPress are ready
-
-    # Host-side services. Several watch what the deploy just created: Prometheus
-    # scrapes the exporter NodePorts, fail2ban reads the ingress logs, Monit checks
-    # the pods.
-    - { role: common_node_exporter, tags: [common_node_exporter] }  # Node Exporter (metrics, port 9100)
-    - { role: common_prometheus,    tags: [common_prometheus] }     # Prometheus (scrapes node:9100 + K3s NodePorts, port 9090)
-    - { role: common_grafana,       tags: [common_grafana] }        # Grafana (dashboards 1860/7362/25545 + Container-Ressourcen, port 3000)
-    - { role: common_loki,          tags: [common_loki] }          # Loki + Alloy: journal, pod logs, audit/fail2ban log (14 days, local only) + log alerts
-    - { role: common_fail2ban,      tags: [common_fail2ban] }       # Fail2Ban: SSH + nginx + WordPress login protection
-    - { role: common_msmtp,         tags: [common_msmtp] }          # msmtp sendmail relay (rkhunter, cron, dnf-automatic)
-    - { role: common_dnf_automatic, tags: [common_dnf_automatic] }  # Automatic security-only updates via dnf-automatic
-    - { role: common_rkhunter,      tags: [common_rkhunter] }       # Rootkit detection with daily scan
-    - { role: common_clamav,        tags: [common_clamav] }  # ClamAV: nightly antivirus scan of WordPress uploads
-    - { role: common_trivy,         tags: [common_trivy] }   # Nightly Trivy scan of all running images: Grafana metrics, mail on NEW fixable findings
-    - { role: blog_visitor_stats,   tags: [blog_visitor_stats] }    # Daily anonymous visitor trend + monthly GeoIP (DB-IP), computed on the host
-    - { role: common_auditd,        tags: [common_auditd] }         # Linux Audit Daemon with security-relevant rules
-    - { role: common_logrotate,     tags: [common_logrotate] }      # Log rotation for Grafana, Prometheus, fail2ban, rkhunter
-    - { role: common_monit,         tags: [common_monit] }          # Watchdog: emails on service/resource failures, auto-restarts fail2ban
-    - { role: common_selinux_monitoring, tags: [common_selinux_monitoring] }  # Own SELinux domains for Prometheus/exporters/Grafana (permissive learning phase)
-
-    # Configures WordPress inside its running pod (ready since blog_k3s_deploy).
-    - { role: blog_wordpress,       tags: [blog_wordpress] }        # WordPress install + plugins via kubectl exec
-    - { role: blog_verify,          tags: [blog_verify] }           # Post-deployment smoke tests (services, K8s, HTTPS, security, performance)
-    - { role: common_version_active, tags: [common_version_active] }  # Are the pinned versions ACTIVE (kubelet, charts, running images, reboot)?
+    - { role: common_version_check, tags: [common_version_check] }
+    - { role: blog_packages,        tags: [blog_packages] }
+    - { role: common_ssh,           tags: [common_ssh] }
+    - { role: common_firewall,      tags: [common_firewall] }
+    - { role: common_sysctl,        tags: [common_sysctl] }
+    - { role: common_cis_hardening, tags: [common_cis_hardening] }
+    - { role: common_selinux,       tags: [common_selinux] }
+    - { role: blog_web,             tags: [blog_web] }
+    - { role: common_node_exporter, tags: [common_node_exporter] }
+    - { role: common_prometheus,    tags: [common_prometheus] }
+    - { role: common_grafana,       tags: [common_grafana] }
+    - { role: common_loki,          tags: [common_loki] }
+    - { role: common_fail2ban,      tags: [common_fail2ban] }
+    - { role: common_msmtp,         tags: [common_msmtp] }
+    - { role: common_dnf_automatic, tags: [common_dnf_automatic] }
+    - { role: common_rkhunter,      tags: [common_rkhunter] }
+    - { role: blog_visitor_stats,   tags: [blog_visitor_stats] }
+    - { role: common_auditd,        tags: [common_auditd] }
+    - { role: common_logrotate,     tags: [common_logrotate] }
+    - { role: common_monit,         tags: [common_monit] }
+    - { role: common_selinux_monitoring, tags: [common_selinux_monitoring] }
+    - { role: blog_verify,          tags: [blog_verify] }
+    - { role: common_version_active, tags: [common_version_active] }
 
     # Always last: refresh the AIDE baseline if this run changed anything it
-    # watches, so tomorrow's scheduled AIDE check isn't a false alarm about
-    # today's own approved changes.
+    # watches, so the next AIDE check is not a false alarm about this run.
     - { role: common_aide_refresh,  tags: [common_aide_refresh] }

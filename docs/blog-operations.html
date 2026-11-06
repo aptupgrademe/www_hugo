@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog – Operations guide</title><style>body{font:16px/1.6 system-ui,sans-serif;max-width:52rem;margin:2rem auto;padding:0 1rem;color:#222}
+h1{font-size:1.8rem}h2{font-size:1.3rem;margin-top:2.2rem;border-bottom:1px solid #ccc}
+pre{background:#f4f4f4;padding:.8rem;overflow-x:auto;font-size:.85rem}code{background:#f4f4f4;padding:0 .2em}pre code{padding:0}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:.35rem .6rem;text-align:left;vertical-align:top}
+nav a{margin-right:1rem}@media (prefers-color-scheme:dark){body{background:#181818;color:#ddd}pre,code{background:#2a2a2a}td,th{border-color:#555}}</style></head><body>
+<h1>Blog – Operations guide</h1><nav><a href="blog-betrieb.html">Deutsch</a><a href="blog-operations.html">English</a><a href="blog-exploitation.html">Français</a></nav>
+<h2>Overview</h2>
+<p>The blog is finished files. nginx serves them; there is no PHP, no database, no container and no login for visitors. Two repositories belong to it:</p><table><tr><th>Repository</th><th>Contents</th></tr><tr><td><code>www_hugo</code> (public)</td><td>The server: playbook and roles</td></tr><tr><td><code>www_hugo_content</code> (private)</td><td>The site: posts, images, theme, build and deploy</td></tr></table>
+<h2>Publishing a post</h2>
+<p>Posts are Markdown files in <code>site/content/&lt;language&gt;/</code>. Publishing needs neither Ansible nor root. The deploy key can only upload and switch. The last five releases stay on the server, and a rollback takes a second.</p>
+<pre><code># In the content repo
+tools/build.sh                 # Hugo + search index into public/
+tools/deploy.sh &lt;host&gt;         # upload, then switch atomically
+tools/deploy.sh &lt;host&gt; 10022 status
+tools/deploy.sh &lt;host&gt; 10022 rollback</code></pre>
+<h2>Running the playbook</h2>
+<p>Every real run starts with a check run, one host at a time. Afterwards the drift check must be clean.</p>
+<pre><code># Always first, one host at a time
+ansible-playbook blog.yml --limit &lt;host&gt; --check --diff --vault-password-file .vault_pass
+# Then for real
+ansible-playbook blog.yml --limit &lt;host&gt; --vault-password-file .vault_pass
+# Afterwards this must report NO DRIFT
+scripts/check-drift.sh blog.yml &lt;host&gt; --vault-password-file .vault_pass</code></pre>
+<p>After a run with <code>--tags</code>, also refresh the baselines, or AIDE and rkhunter will mail about the changed files at night:</p>
+<pre><code>ansible-playbook blog.yml --limit &lt;host&gt; --tags blog_web --vault-password-file .vault_pass
+ansible-playbook blog.yml --limit &lt;host&gt; --tags common_rkhunter,common_aide_refresh --vault-password-file .vault_pass</code></pre>
+<h2>Updates</h2>
+<p>dnf-automatic installs security updates at night; nginx comes from the nginx.org mainline repository. Order of the night: AIDE 00:00, updates 01:00–02:00, reboot if needed 03:30, service restarts 03:45, AIDE baseline 04:00. Pinned versions are in <code>inventory/group_vars/all/versions.yml</code>. The <code>common_version_check</code> report shows what is newer.</p>
+<h2>TLS</h2>
+<p>certbot obtains certificates through HTTP-01, renews them 30 days before expiry and then reloads nginx. Monit warns when a certificate has fewer than 21 days left or is still self-signed. On a host without matching DNS, <code>blog_web_acme_enabled: false</code> keeps the self-signed certificate.</p>
+<h2>HTTP/3</h2>
+<p>HTTP/3 needs nginx mainline with <code>quic_bpf on</code>. Without it, connections hang after a reload. <code>blog_web_http3: false</code> switches it off in one place, including the firewall rule. To check:</p>
+<pre><code>curl --http3-only -sI https://&lt;host&gt;/ | head -1
+ps -eo args | grep &#x27;shutting down&#x27;     # must be empty about 30 s after a reload
+ps -eZ | grep nginx                    # httpd_t
+systemctl show nginx -p AmbientCapabilities -p CapabilityBoundingSet</code></pre>
+<h2>Firewall and bans</h2>
+<p>Open are 80 and 443 (TCP), 443 (UDP) and SSH on 10022. The host routes nothing, and nginx may not call anything except Grafana on loopback. Each fail2ban jail has its own nftables set pair.</p>
+<pre><code>fail2ban-client status
+fail2ban-client status nginx-bad-paths
+nft list set inet filter f2b_bad_paths4
+fail2ban-client set nginx-bad-paths unbanip &lt;address&gt;</code></pre>
+<p>Never request forbidden paths from your own machine: two hits ban the address for 24 hours.</p>
+<h2>Monitoring</h2>
+<p>Grafana is at <code>/grafana/</code>, from the country list only. Alerts arrive by mail from Grafana and from Monit. Loki keeps logs for 14 days, and access logs stay on disk for 14 days. Visitor numbers exist only as daily totals in <code>/var/lib/visitor-stats/</code>.</p>
+<h2>Backup</h2>
+<p>A backup machine pulls the releases, certificates, visitor numbers and SSH host keys every night and versions them with rdiff-backup. Monit warns when the last backup is older than three days. The posts are also in Git. Details are in <code>scripts/blog-backup/README.md</code>.</p>
+<h2>Rebuilding</h2>
+<p>Fresh AlmaLinux 10, <code>ansible_port: 22</code>, run the playbook. It reboots the server once and continues on port 10022. Then set <code>ansible_port</code> to 10022 and deploy the site. The posts need no backup for this, only the Git repository.</p>
+<h2>Troubleshooting</h2>
+<p>A service can be "active" and still run in the wrong SELinux domain. Check <code>ps -eZ</code> after every unit or sandbox change.</p>
+<pre><code>systemctl status nginx
+nginx -t
+journalctl -u nginx -n 50
+tail -f /var/log/nginx/error.log
+ausearch -m avc -ts recent --input-logs &lt;/dev/null
+monit summary</code></pre>
+</body></html>

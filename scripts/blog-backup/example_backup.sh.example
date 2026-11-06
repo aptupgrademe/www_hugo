@@ -1,0 +1,8 @@
+#!/bin/bash
+# Blog-Backup <name> -> /data/backup/blog-data/<name>
+# Kopie als <name>_backup.sh anlegen (gitignored), Hostnamen eintragen, chmod 750.
+# Logik: blog_backup_lib.sh. Log: /data/backup/blog/logs/<name>_*.log
+NAME=blog
+REMOTE_HOST=www.example.org
+# CONTENT_DIR=/home/me/www_hugo_content   # Arbeitskopie des Inhalts-Repos, optional
+. "$(dirname "$(readlink -f "$0")")/blog_backup_lib.sh"

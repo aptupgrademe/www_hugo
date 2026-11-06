@@ -3,7 +3,7 @@
 # Role: common_ssh
 # Purpose: Harden SSH by setting a custom port (10022), deploying a locked-down
 #          sshd_config, and ensuring SELinux labels the new port correctly.
-# Target:  AlmaLinux 9 (SELinux enforcing by default)
+# Target:  AlmaLinux 10 (SELinux enforcing by default)
 # =============================================================================
 #
 # How to read this role: it is already explained step by step below
@@ -114,9 +114,8 @@
 
 # The main sshd_config pulls in /etc/ssh/sshd_config.d/*.conf at the TOP, and
 # for sshd the first value of a keyword wins. Cloud images drop their own
-# 50-cloud-init.conf there: the Nextcloud VPS image's says "PasswordAuthentication yes" and
-# silently overrode our "no" (found 2026-09-30 on cvjm and sofie; the blog's image
-# ships "no", so the blog was fine). A 00- drop-in sorts first and pins the
+# 50-cloud-init.conf there: some images say "PasswordAuthentication yes" and
+# silently overrode our "no" (found 2026-09-30). A 00- drop-in sorts first and pins the
 # authentication settings no matter what a provider image adds later.
 # X11Forwarding belongs here for the same reason: AlmaLinux's own
 # 50-redhat.conf says "yes" and beat the "no" in our sshd_config on all three
@@ -147,7 +146,7 @@
 # -----------------------------------------------------------------------------
 # Shown to users before authentication. Mode 0644 is intentional – the file
 # contains no secrets and sshd reads it as a non-root process.
-# template is used instead of copy so Jinja2 variables (e.g. nextcloud_ipv4)
+# template is used instead of copy so Jinja2 variables (e.g. server_ipv4)
 # are rendered into the banner at deploy time.
 # -----------------------------------------------------------------------------
 - name: SSH | Deploy SSH login banner
@@ -202,8 +201,8 @@
 # issues remotely.
 # No RestrictSUIDSGID: its seccomp filter is inherited by every SSH session
 # and blocks chmod/chown from setting setuid/setgid bits even for root,
-# regardless of capabilities. This broke installing packages (e.g. MariaDB's
-# setuid-root auth_pam_tool) over an SSH session.
+# regardless of capabilities. This broke installing packages with setuid
+# helpers over an SSH session.
 # No PrivateTmp either, for the same reason: it gives the sshd *service* its
 # own /tmp, which every SSH session then inherits. Two consequences, both
 # surprising: a file dropped in /tmp over SSH is invisible to cron and to
@@ -212,8 +211,8 @@
 #   Cannot create repo temporary directory "/tmp/libdnf.XXXXXX"
 # from dnf running over a multiplexed connection that outlived the restart.
 # sshd itself barely uses /tmp, so the protection was worth close to nothing.
-# Per-service sandboxing belongs on services that spawn no sessions - see
-# roles/next_mariadb/files/systemd-hardening.conf for that done properly.
+# Per-service sandboxing belongs on services that spawn no sessions - see the
+# nginx drop-in in roles/blog_web for that done properly.
 # -----------------------------------------------------------------------------
 - name: SSH | Ensure sshd.service.d drop-in directory exists
   ansible.builtin.file:

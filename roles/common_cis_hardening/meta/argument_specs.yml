@@ -2,13 +2,11 @@
 # Inputs from host_vars - keep in sync with inventory/host_vars/*/*.example.
 #
 # meta/argument_specs.yml: the role's declared inputs, checked by Ansible when
-# the role starts (type, required). How it works in detail: see
-# roles/common_mysqld_exporter/meta/argument_specs.yml.
+# the role starts (type, required).
 
 argument_specs:
   main:
-    short_description: CIS AlmaLinux 9 Benchmark (Level 1 - Server) findings that are safe to apply without risking
-      the k3s...
+    short_description: CIS AlmaLinux Benchmark (Level 1 - Server) findings that are safe to apply without locking out admin access
     description:
       - Host-specific inputs of this role (inventory/host_vars/<host>/vars.yml and vault.yml).
       - Ansible validates them when the role starts - a missing or wrongly typed value fails

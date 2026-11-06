@@ -22,12 +22,6 @@ inventory/hosts.yml
 docs/*-fixes-*.md
 docs/*-audit*.md
 
-# PGP PRIVATE key + revocation cert for the blog impressum key.
-# NEVER commit these – not to GitHub, not even to the internal repo.
-# Only publickey.asc (the public half) is tracked and served at /publickey.asc.
-roles/blog_k3s_deploy/files/privatekey.asc
-roles/blog_k3s_deploy/files/*.rev
-
 # Blog post drafts – written here for convenience, published on the blog,
 # not part of the repo. Untracked alone is not enough: a `git add -A` would
 # sweep them into a commit and onto the public remote.
@@ -37,11 +31,8 @@ blog-draft-*
 # internal GitLab only, via the "internal" branch (git add -f on that branch).
 notes/
 
-# Filled-in Nextcloud backup scripts (real hostnames) stay local.
-# Copy scripts/nextcloud-backup/example_backup.sh.example -> <name>_backup.sh.
-scripts/nextcloud-backup/*_backup.sh
-# Same for the WordPress backup (scripts/wordpress-backup/example_backup.sh.example).
-scripts/wordpress-backup/*_backup.sh
+# Filled-in backup scripts (real hostnames) stay local.
+scripts/blog-backup/*_backup.sh
 
 # Python bytecode
 __pycache__/
@@ -50,7 +41,5 @@ __pycache__/
 # Internal explainer PDFs for non-IT readers (German only) - never published.
 docs/intern/
 
-# Scratch dir of the K8s apply test (tests/k8s/run.sh)
-tests/k8s/.work/
-# Scratch dir of the update scenario test (tests/update/run.sh)
-tests/update/.work/
+# Inventory of the test VM (address in its host_vars)
+inventory/test-only.yml

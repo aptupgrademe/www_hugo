@@ -1,6 +1,6 @@
 # Managed by Ansible (common_selinux_monitoring) - local SELinux module.
 # Gives prometheus its own domain instead of unconfined_service_t.
-policy_module(homelab_prometheus, 1.1.1)
+policy_module(homelab_prometheus, 1.1.2)
 
 type homelab_prometheus_t;
 type homelab_prometheus_exec_t;
@@ -24,12 +24,11 @@ manage_files_pattern(homelab_prometheus_t, homelab_prometheus_var_lib_t, homelab
 allow homelab_prometheus_t homelab_prometheus_var_lib_t:file map;
 files_search_var_lib(homelab_prometheus_t)
 
-# listen on 9090; scrape node_exporter 9100, kubelet 10250, the NodePorts
+# listen on 9090; scrape node_exporter 9100 and the local exporters
 allow homelab_prometheus_t self:tcp_socket create_stream_socket_perms;
 corenet_tcp_bind_generic_node(homelab_prometheus_t)
 corenet_tcp_bind_websm_port(homelab_prometheus_t)
 corenet_tcp_connect_hplip_port(homelab_prometheus_t)
-corenet_tcp_connect_kubernetes_port(homelab_prometheus_t)
 corenet_tcp_connect_unreserved_ports(homelab_prometheus_t)
 sysnet_read_config(homelab_prometheus_t)
 

@@ -2,7 +2,7 @@
 # =============================================================================
 # Role: common_auditd
 # Purpose: Ensure the Linux Audit Daemon (auditd) is running and enforce
-#          a baseline set of security-relevant audit rules on AlmaLinux 9.
+#          a baseline set of security-relevant audit rules on AlmaLinux 10.
 #          Rules cover: identity files, sudoers, SSH config, cron, kernel
 #          modules, sudo usage, and network configuration changes.
 # =============================================================================
@@ -22,11 +22,11 @@
 
 
 # -----------------------------------------------------------------------------
-# Package (usually pre-installed on AlmaLinux 9 – ensure it's present)
+# Package (usually pre-installed on AlmaLinux – ensure it's present)
 # -----------------------------------------------------------------------------
 - name: auditd | Ensure audit package is installed
   ansible.builtin.dnf:
-    name: audit
+    name: [audit, audit-rules]
     state: present
 
 
@@ -58,8 +58,8 @@
 
 # -----------------------------------------------------------------------------
 # Slim audit-event notifier
-# auditd only logs; this turns the high-signal keys (k3s_manifests, k3s_token,
-# k3s_tls, identity – the ones that must never change in normal operation) into
+# auditd only logs; this turns the high-signal key (identity – it must not
+# change in normal operation) into
 # an email via the existing msmtp relay. Checkpoint-based, so each event is
 # reported once. Noisy keys stay purely forensic (ausearch on demand).
 # -----------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 ---
 # =============================================================================
 # Role: common_node_exporter
-# Purpose: Install Prometheus Node Exporter on AlmaLinux 9.
+# Purpose: Install Prometheus Node Exporter on AlmaLinux 10.
 #          Binds to 127.0.0.1:9100 – only accessible from localhost.
 #          Prometheus (common_prometheus) scrapes this endpoint.
 # =============================================================================
@@ -101,16 +101,12 @@
 
       [Service]
       User=node_exporter
-      # netdev.device-exclude hides the K8s/container virtual interfaces (veth*,
-      # cni0, flannel.1, docker*, br-*, kube-ipvs*, dummy*, lo) so the netdev
-      # metrics -- and every Grafana Network panel -- show only real NICs like
-      # eth0 (the server's actual in/out) instead of dozens of veth* churn.
-      # '\\.' because systemd unescapes ExecStart: a bare '\.' still reached the
-      # exporter but logged "Ignoring unknown escape sequences" on every reload.
+      # netdev.device-exclude hides loopback so the Grafana Network panels show
+      # only real NICs (the server's actual in/out).
       ExecStart=/usr/local/bin/node_exporter \
         --web.listen-address=127.0.0.1:9100 \
         --collector.textfile.directory=/var/lib/node_exporter/textfile \
-        --collector.netdev.device-exclude=^(veth.*|cni[0-9]+|flannel\\.[0-9]+|docker[0-9]+|br-.*|kube-ipvs.*|dummy.*|lo|nodelocaldns)$
+        --collector.netdev.device-exclude=^(dummy.*|lo)$
       Restart=on-failure
       RestartSec=5s
 
@@ -121,7 +117,7 @@
     - restart node_exporter
 
 # Textfile collector: *.prom files in here are served as metrics. Written by
-# root jobs (common_trivy), only read by node_exporter - hence root-owned.
+# root jobs (heartbeats below), only read by node_exporter - hence root-owned.
 # Its own SELinux type comes from common_selinux_monitoring.
 - name: Node Exporter | Textfile collector directory
   ansible.builtin.file:
@@ -138,7 +134,7 @@
 # meldet sich nicht" fires when a task is older than its own max age. Found
 # the hard way: the auditd notifier was silent for six weeks and nothing
 # noticed. Cron jobs append it to their command line (common_cis_hardening,
-# common_rkhunter, common_clamav, common_auditd, common_dnf_automatic);
+# common_rkhunter, common_auditd, common_dnf_automatic);
 # systemd timers get it as ExecStartPost below (runs only after a successful
 # ExecStart). Label "task", not "job": Prometheus owns "job".
 - name: Node Exporter | Heartbeat helper for periodic jobs
@@ -164,7 +160,7 @@
     owner: root
     group: root
     mode: "0755"
-  loop: "{{ heartbeat_units | selectattr('stack', 'in', ['all', stack]) | list }}"
+  loop: "{{ heartbeat_units }}"
   loop_control:
     label: "{{ item.unit }}"
 
@@ -182,7 +178,7 @@
       # ExecStartPost runs inside the unit's ProtectSystem=strict sandbox
       ReadWritePaths=/var/lib/node_exporter/textfile
       {% endif %}
-  loop: "{{ heartbeat_units | selectattr('stack', 'in', ['all', stack]) | list }}"
+  loop: "{{ heartbeat_units }}"
   loop_control:
     label: "{{ item.unit }}"
   notify: reload systemd
@@ -197,7 +193,7 @@
   ansible.builtin.command:
     cmd: "/usr/local/sbin/heartbeat-mark {{ item.task }} {{ item.max_age }}"
     creates: "/var/lib/node_exporter/textfile/heartbeat_{{ item.task }}.prom"
-  loop: "{{ heartbeat_units | selectattr('stack', 'in', ['all', stack]) | list }}"
+  loop: "{{ heartbeat_units }}"
   loop_control:
     label: "{{ item.task }}"
 

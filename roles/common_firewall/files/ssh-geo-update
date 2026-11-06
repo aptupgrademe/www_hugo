@@ -11,11 +11,10 @@
 #
 # Optional: "nginx_targets" ([{"out": path, "reload": argv}], or the older
 # single "nginx_out"/"nginx_reload") writes the same blocks as an
-# nginx geo include ("<cidr> 1;" per line) per target - the WordPress admin
-# filter on the blog, the /grafana filter in the ingress controller on every
-# host - and runs the target's reload argv afterwards so nginx picks it up -
+# nginx geo include ("<cidr> 1;" per line) per target - the /grafana filter of
+# blog_web - and runs the target's reload argv afterwards so nginx picks it up -
 # both only after the nftables part succeeded, and the reload not with
-# --no-apply (Ansible runs: the pod start reads the file anyway).
+# --no-apply (Ansible runs: its own handler reloads nginx).
 #
 # /etc/sysconfig/nftables.conf includes that file, so every firewall reload
 # (and every boot) refills the sets in the same atomic transaction that
@@ -161,8 +160,7 @@ def main():
             die(f"loading the new list failed: {res.stderr.strip()}")
 
     # nginx geo includes: "nginx_targets" (list of {"out": path, "reload":
-    # argv}) - one per nginx that filters by country (the blog's WordPress
-    # admin, the ingress controller's /grafana). The older single pair
+    # argv}) - one per nginx that filters by country (/grafana). The older single pair
     # "nginx_out"/"nginx_reload" still works.
     targets = list(conf.get("nginx_targets") or [])
     if conf.get("nginx_out"):

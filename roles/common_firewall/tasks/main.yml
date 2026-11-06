@@ -3,16 +3,12 @@
 # Role: common_firewall
 # Purpose: Deploy IPv4/IPv6 nftables packet-filter rules via a single template.
 #          /etc/sysconfig/nftables.conf is the file read by the nftables systemd
-#          service on AlmaLinux 9 at boot (ExecStart) and on reload (ExecReload).
+#          service on AlmaLinux at boot (ExecStart) and on reload (ExecReload).
 #          The commonly referenced /etc/nftables.conf is NOT used by the service.
-#          K3s (kube-proxy, flannel, its network policy controller) writes
-#          its rules through iptables-nft into its OWN nftables tables (all
-#          hosts since 2026-10-19; the blog used iptables-legacy before). For
-#          the second case this role only ever replaces table
-#          "inet filter" ("delete table" + recreate in fw.nft.j2, and the
-#          systemd drop-in below scopes reload/stop the same way) - never
-#          "flush ruleset", which would wipe K3s's tables too.
-# Target:  AlmaLinux 9
+#          This role only ever replaces table "inet filter" ("delete table" +
+#          recreate in fw.nft.j2; the systemd drop-in below scopes reload/stop
+#          the same way), never "flush ruleset".
+# Target:  AlmaLinux 10
 # Variables: addresses come from the inventory (group_vars/all/main.yml and
 #            host_vars/<host>/vars.yml); the only role defaults are the
 #            optional SSH country filter (fw_ssh_geo_countries/_extra).
@@ -56,8 +52,8 @@
 
 # -----------------------------------------------------------------------------
 # Static or DHCP? Decides whether the template renders the DHCP rules at all.
-# The blog provider hands out IPv4 by DHCP (IPv6 is static); the Nextcloud VPS provider (cvjm, sofie)
-# is static for both families. Read from NetworkManager instead of an
+# Some providers hand out IPv4 by DHCP (IPv6 static), others are static for
+# both families. Read from NetworkManager instead of an
 # inventory flag, so a provider change can never leave a stale setting behind.
 # If detection fails, both default to true: allowing DHCP is harmless, a
 # missing rule on a DHCP host can cost the address on the next renewal.
@@ -107,22 +103,16 @@
         group: root
         mode: "0644"
         content: "{{ {'countries': fw_ssh_geo_countries, 'extra': fw_ssh_geo_extra,
-                      'nginx_targets': [_geo_ingress] + ([_geo_blog] if stack == 'wordpress' else [])}
+                      'nginx_targets': [_geo_nginx]}
                      | to_nice_json }}\n"
       register: _geo_conf
       vars:
-        # Every host: the same list as an nginx geo file for the ingress
-        # controller, which answers 403 on /grafana outside these countries
-        # (common_k3s mounts the directory, the Grafana ingresses check it).
-        # The reload fails harmlessly on a fresh host before K3s exists.
-        _geo_ingress:
-          out: "{{ ingress_admin_geo_dir }}/admin-geo.conf"
-          reload: [/usr/local/bin/k3s, kubectl, -n, ingress-nginx, exec, ds/ingress-nginx-nginx-ingress-controller, --, nginx, -s, reload]
-        # Blog: the WordPress admin filter (blog_k3s_deploy), reloaded in the
-        # running nginx container of the WordPress pod.
-        _geo_blog:
-          out: "{{ blog_admin_geo_dir }}/admin-geo.conf"
-          reload: [/usr/local/bin/k3s, kubectl, -n, wordpress, exec, deploy/wordpress, -c, nginx, --, nginx, -s, reload]
+        # The same list as an nginx geo file: nginx answers 403 on /grafana
+        # outside these countries. The reload fails harmlessly on a fresh host
+        # before nginx exists.
+        _geo_nginx:
+          out: /etc/nginx/geo/admin-geo.conf
+          reload: [/usr/bin/systemctl, reload, nginx]
 
     - name: SSH geo | Is there a list already?
       ansible.builtin.stat:
@@ -186,7 +176,7 @@
 
 # -----------------------------------------------------------------------------
 # Deploy ruleset to the file the nftables systemd service actually reads.
-# AlmaLinux 9: ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
+# AlmaLinux: ExecStart=/sbin/nft -f /etc/sysconfig/nftables.conf
 # -----------------------------------------------------------------------------
 # validate: a syntax error must never reach the live file (the service would
 # fail to load it on the next boot). `nft -c` only checks, nothing is applied.
@@ -224,8 +214,8 @@
         - /etc/nftables/ssh-geo.nft
 
 # The stock unit reloads with 'flush ruleset; include ...' and stops with
-# 'flush ruleset'. That also wipes kube-proxy's / flannel's / K3s's tables,
-# which live in nftables too, and breaks Service traffic until they re-sync.
+# 'flush ruleset'. That would wipe every table on the host, not only ours (it
+# broke the pods' traffic for up to 90 s in the former K3s setup).
 # Scope reload/stop to our own table. It must be in place before the reload
 # handler fires at the end of the play.
 - name: Firewall | Create nftables drop-in directory
@@ -236,7 +226,7 @@
     group: root
     mode: "0755"
 
-- name: Firewall | Scope nftables reload/stop to our own table (keep K3s tables)
+- name: Firewall | Scope nftables reload/stop to our own table
   ansible.builtin.copy:
     dest: /etc/systemd/system/nftables.service.d/10-own-table-only.conf
     owner: root
@@ -256,7 +246,7 @@
     daemon_reload: true
   when: _nft_dropin.changed
 
-# On AlmaLinux 9 the active config is /etc/sysconfig/nftables.conf.
+# On AlmaLinux the active config is /etc/sysconfig/nftables.conf.
 # /etc/nftables.conf is a distro default stub that is NOT loaded by the
 # systemd unit — but a stale copy could cause confusion on manual reloads.
 # (Despite the task name, it is removed unconditionally on AlmaLinux - there
@@ -293,7 +283,7 @@
 # The migration to this role never removed it, so the blog ran two stacked
 # firewalls; the old one has OUTPUT policy DROP without a DHCP rule and
 # dropped the IPv4 lease renewals ("IPTables-Dropped ... DPT=67", found
-# 2026-09-29). No-op on hosts that never had it (cvjm, sofie). The rules
+# 2026-09-29). No-op on hosts that never had it. The rules
 # already loaded stay active until the next reboot.
 - name: Firewall | Remove the legacy iptables @reboot job
   ansible.builtin.cron:
@@ -315,15 +305,9 @@
       next reboot - reboot this host at a convenient time.
   when: _legacy_fw.changed
 
-# nftables only (2026-10-19): with iptables-legacy installed, /usr/sbin/iptables
-# points to the legacy backend (alternatives), and K3s and Flannel (and then
-# still Calico),
-# which use the host's iptables, put all their rules into the legacy tables -
-# that was the case on the blog (EPEL packages from its first install, never
-# used: iptables.service was disabled). Without these packages iptables is
-# iptables-nft on every host. Removing them changes nothing that is running;
-# the switch of a running K3s needs the one-time migration in the docs
-# ("nftables only"). Checked with dnf --assumeno: nothing depends on them.
+# nftables only: with iptables-legacy installed, /usr/sbin/iptables points to the
+# legacy backend (alternatives), which writes rules the nftables view does not
+# show. Checked with dnf --assumeno: nothing depends on these packages.
 - name: Firewall | Remove the legacy iptables packages (iptables is iptables-nft)
   ansible.builtin.dnf:
     name:
