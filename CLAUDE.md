@@ -145,6 +145,8 @@ and in the README. This file only points the way and lists the traps.
 - **The domain is on the HSTS preload list.** No click-through on certificate warnings for anyone,
   including us: a self-signed test under the real name needs a separate browser profile. A failed
   renewal takes the site offline, so keep a saved certificate at hand when rebuilding.
+- **Hugo's default feed lists every page**, so the imprint with the postal address landed in the RSS
+  feeds. Feeds and search are posts only; grep the build for private data after template changes.
 - **Compare a rebuilt site with the old one line by line.** Yoast had been providing `robots.txt`,
   the sitemap addresses and `twitter:card` without anyone noticing.
 - **Releases are hard-linked**: backups need `rsync -H`, or every release counts in full.
