@@ -246,6 +246,15 @@
       when: _web_bpf_te is changed or _web_bpf_loaded.rc != 0
       changed_when: true
 
+- name: Web | Old WordPress post numbers
+  ansible.builtin.copy:
+    src: wp-old-ids.map
+    dest: /etc/nginx/wp-old-ids.map
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
 - name: Web | Main configuration
   ansible.builtin.template:
     src: nginx.conf.j2

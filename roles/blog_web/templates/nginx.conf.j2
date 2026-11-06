@@ -56,6 +56,9 @@ http {
 {% endif %}
     limit_req_zone $binary_remote_addr zone=grafana_login:10m rate=5r/s;
 
+    map $arg_p $wp_old_post { default ""; include /etc/nginx/wp-old-ids.map; }
+    map $arg_page_id $wp_old_page { default ""; include /etc/nginx/wp-old-ids.map; }
+
     map $http_upgrade $connection_upgrade {
         default upgrade;
         ''      close;
@@ -149,10 +152,14 @@ http {
         }
 
         # Old WordPress addresses
+        if ($wp_old_post) { return 301 $wp_old_post; }
+        if ($wp_old_page) { return 301 $wp_old_page; }
         location = /feed/ { return 301 /index.xml; }
         location = /de/feed/ { return 301 /de/index.xml; }
         location = /fr/feed/ { return 301 /fr/index.xml; }
         location = /es/feed/ { return 301 /es/index.xml; }
+        location ^~ /author/ { return 301 /; }
+        location ~ ^(?<wp_feed_of>/.+)/feed/?$ { return 301 $wp_feed_of/; }
         location = /sitemap_index.xml { return 301 /sitemap.xml; }
         location = /post-sitemap.xml { return 301 /sitemap.xml; }
         location = /page-sitemap.xml { return 301 /sitemap.xml; }

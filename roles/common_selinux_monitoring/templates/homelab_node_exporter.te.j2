@@ -1,6 +1,6 @@
 # Managed by Ansible (common_selinux_monitoring) - local SELinux module.
 # Gives node_exporter its own domain instead of unconfined_service_t.
-policy_module(homelab_node_exporter, 1.3.2)
+policy_module(homelab_node_exporter, 1.3.3)
 
 type homelab_node_exporter_t;
 type homelab_node_exporter_exec_t;
@@ -32,6 +32,9 @@ allow homelab_node_exporter_t self:netlink_route_socket { create_netlink_socket_
 # AlmaLinux 10 gives /proc/pressure its own type proc_psi_t: without this the pressure
 # collector fails and the Pressure panel stays empty (found 2026-11-06).
 kernel_read_psi(homelab_node_exporter_t)
+# selinux collector: hidden by dontaudit, only semodule -DB showed it (2026-11-06).
+selinux_get_enforce_mode(homelab_node_exporter_t)
+seutil_read_config(homelab_node_exporter_t)
 kernel_read_proc_files(homelab_node_exporter_t)
 kernel_read_network_state(homelab_node_exporter_t)
 kernel_read_network_state_symlinks(homelab_node_exporter_t)
