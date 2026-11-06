@@ -24,6 +24,7 @@
 #
 # 5. Change ansible_port from 22 to 10022 in vars.yml - the switch in step 4
 #    only lasts for that one run (the play prints a reminder at the end).
+#    Then reboot once more: psi=1 for the Pressure panel only takes effect at boot.
 #
 # Usage:
 # -----------------------------------------------------------------------------

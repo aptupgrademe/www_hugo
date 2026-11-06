@@ -38,3 +38,6 @@ blog_web_deploy_pubkey: "ssh-ed25519 AAAA... blog-deploy@builder"
 
 # --- Optional: SSH and /grafana only from these countries' IP blocks ---
 fw_ssh_geo_countries: [DE]
+
+# --- Optional: swap file size in MB, default 2048, 0 removes it ---
+# sysctl_swap_mb: 2048

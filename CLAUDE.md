@@ -117,6 +117,12 @@ and in the README. This file only points the way and lists the traps.
 
 ### Ansible
 - **`force_handlers = True`** (ansible.cfg): handlers were lost after an aborted run.
+- **ACME is the one step a test VM without DNS cannot prove.** The hook directory only appears on
+  certbot's first run. `certbot renew --dry-run` after the real run.
+- **`psi=1` needs a reboot after the role set it, and the first-run reboot comes earlier.** On
+  AlmaLinux 10 `/proc/pressure` is `proc_psi_t` (`kernel_read_psi`). `irq` answers "not supported"
+  on these VMs, so `node_scrape_collector_success{collector="pressure"}` stays 0 although cpu, io
+  and memory arrive; the collector alert deliberately does not watch it.
 - **Only a real run from zero proves the first install.** A rerun hides what needs an empty
   machine. Three bugs surfaced that way on 2026-11-06 (next three points), each invisible before.
 - **`async` must outlast the command.** With `async: 1` and `sleep 2`, ansible-core 2.21 killed

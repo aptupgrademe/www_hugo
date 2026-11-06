@@ -104,7 +104,8 @@ So this host runs mainline, with `quic_bpf on` and `worker_shutdown_timeout 30s`
 
 SELinux enforcing, with own domains for Prometheus, node_exporter and Grafana. auditd,
 AIDE, rkhunter, CIS-based sysctl and mount options, legacy iptables blocked, SSH on port
-10022 with keys only, dnf-automatic with a reboot when needed.
+10022 with keys only, dnf-automatic with a reboot when needed. A 2 GB swap file softens memory
+spikes (`sysctl_swap_mb`, 0 removes it).
 
 ### Monitoring
 
@@ -141,7 +142,10 @@ activates neither mid-run, reboots once so both come up together, reconnects on 
 finishes. Then change `ansible_port` to `10022` in `vars.yml`; Ansible reads the port before
 it connects, so this one step cannot be automated away. The play prints a reminder.
 
-Until the first deploy, the site answers with an empty page. Publishing happens from the
+Reboot once more after the first run: `psi=1` only takes effect at boot, and the Pressure panel
+stays empty until then.
+
+Until the first deploy, the site answers with a short maintenance page. Publishing happens from the
 build machine, with the key in `blog_web_deploy_pubkey`:
 
 ```bash
