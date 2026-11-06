@@ -62,6 +62,12 @@
     line: "!/srv/blog"
     insertafter: EOF
 
+- name: CIS | Exclude the swap file from AIDE (its content changes all the time)
+  ansible.builtin.lineinfile:
+    path: /etc/aide.conf
+    line: "!/swapfile"
+    insertafter: EOF
+
 - name: CIS | Exclude /boot/efi from AIDE (vfat, unreadable for aide_t under SELinux)
   ansible.builtin.lineinfile:
     path: /etc/aide.conf

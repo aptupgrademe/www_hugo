@@ -136,3 +136,52 @@
     path: /etc/default/grub
     regexp: '^(GRUB_CMDLINE_LINUX="(?![^"]*\bpsi=1\b)[^"]*?)\s*"'
     replace: '\1 psi=1"'
+
+# Swap: K3s needed it off, a plain host does not. A small file gives the kernel room for
+# pages nobody touches and softens a memory spike instead of an immediate OOM kill.
+# vm.swappiness (above) keeps it from being used in normal operation. dd, not fallocate:
+# swapon rejects files with holes on some filesystems. sysctl_swap_mb: 0 removes it.
+- name: Sysctl | Is the swap file active?
+  ansible.builtin.command: swapon --show=NAME --noheadings
+  register: sysctl_swapon
+  changed_when: false
+  check_mode: false
+
+- name: Sysctl | Swap file
+  when: (sysctl_swap_mb | default(2048) | int) > 0
+  block:
+    - name: Sysctl | Create the swap file
+      ansible.builtin.shell: |
+        set -e
+        dd if=/dev/zero of=/swapfile bs=1M count={{ sysctl_swap_mb | default(2048) | int }} status=none
+        chmod 600 /swapfile
+        restorecon /swapfile
+        mkswap /swapfile >/dev/null
+      args:
+        creates: /swapfile
+    - name: Sysctl | Swap file in fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^/swapfile\s'
+        line: /swapfile none swap defaults 0 0
+    - name: Sysctl | Activate the swap file
+      ansible.builtin.command: swapon /swapfile
+      when: "'/swapfile' not in sysctl_swapon.stdout"
+      changed_when: true
+
+- name: Sysctl | Remove the swap file
+  when: (sysctl_swap_mb | default(2048) | int) == 0
+  block:
+    - name: Sysctl | Deactivate the swap file
+      ansible.builtin.command: swapoff /swapfile
+      when: "'/swapfile' in sysctl_swapon.stdout"
+      changed_when: true
+    - name: Sysctl | Swap file out of fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^/swapfile\s'
+        state: absent
+    - name: Sysctl | Delete the swap file
+      ansible.builtin.file:
+        path: /swapfile
+        state: absent
