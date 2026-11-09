@@ -3,7 +3,7 @@
 # Blog-Backup – gemeinsame Logik. Wird von <name>_backup.sh eingebunden, nicht
 # direkt aufrufen. Zieht per SSH (root) auf diesen Rechner:
 #
-#   <DATA_ROOT>/<NAME>/site/           /srv/blog: die ausgelieferten Fassungen
+#   <DATA_ROOT>/<NAME>/site/current/   /srv/blog/current: nur die aktive Fassung
 #   <DATA_ROOT>/<NAME>/letsencrypt/    /etc/letsencrypt: Zertifikate und ACME-Konto
 #   <DATA_ROOT>/<NAME>/stats/          /var/lib/visitor-stats: die Tageszahlen
 #   <DATA_ROOT>/<NAME>/ssh-hostkeys/   /etc/ssh/ssh_host_*: Schlüssel des Servers
@@ -65,7 +65,15 @@ pull() {   # pull <Quelle auf dem Server> <Zielordner> [Pflicht=1]
     return 0
 }
 
-pull /srv/blog/ site
+# Nur die aktive Fassung, als echter Ordner unter festem Namen. Jedes Deploy legt einen
+# neuen releases/<Zeit>-Ordner an; rdiff-backup sah darin lauter neue Dateien und hob die
+# gelöschten Fassungen komplett in der Historie auf (rund 240 MB je Deploy, am
+# Wochenende 2026-11-07 Stunden statt Minuten). Ältere Fassungen baut das Inhalts-Repo neu.
+if [ -L "$BASE/site/current" ] || [ -d "$BASE/site/releases" ] || [ -d "$BASE/site/incoming" ]; then
+    log "altes Layout (alle Fassungen) wird entfernt"
+    rm -rf "$BASE/site/current" "$BASE/site/releases" "$BASE/site/incoming"
+fi
+pull /srv/blog/current/ site/current
 [ "$LETSENCRYPT" = 1 ] && pull /etc/letsencrypt/ letsencrypt
 pull /var/lib/visitor-stats/ stats
 pull '/etc/ssh/ssh_host_*' ssh-hostkeys

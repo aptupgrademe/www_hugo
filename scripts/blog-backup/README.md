@@ -6,7 +6,7 @@ There is no database and no password: the site is files.
 ```
 /data/backup/blog/                 scripts (a copy of this folder) + logs/
 /data/backup/blog-data/<name>/
-    site/           /srv/blog: the published releases and the "current" link
+    site/current/   /srv/blog/current: only the live release, as a real directory
     letsencrypt/    /etc/letsencrypt: certificates and the ACME account
     stats/          /var/lib/visitor-stats: the daily visitor counts
     ssh-hostkeys/   /etc/ssh/ssh_host_*: so a rebuilt server keeps its identity
@@ -25,8 +25,9 @@ are in there.
 | `example_backup.sh.example` | yes | Template for one instance |
 | `<name>_backup.sh` | **no** (gitignored) | Filled-in copy with the real hostname |
 
-What is deliberately not saved: metrics and logs (Prometheus, Loki), and
-everything the playbook rebuilds. The posts live in a Git repository; a copy of
+What is deliberately not saved: metrics and logs (Prometheus, Loki), the older
+releases (each deploy gets a new directory name, so rdiff-backup kept every removed
+release in full; the content repo rebuilds them), and everything the playbook rebuilds. The posts live in a Git repository; a copy of
 the working tree is only a safety net, including what is not committed yet.
 
 ## Setup

@@ -9,8 +9,9 @@
 #   rdiff-backup --api-version 201 list increments /data/backup/blog-rdiff
 #   rdiff-backup --api-version 201 restore --at 3D \
 #       /data/backup/blog-rdiff/blog/site /tmp/restore-site
-#   Danach liegt die aktive Fassung unter /tmp/restore-site/current/. Nicht direkt
-#   site/current wiederherstellen: Das ist nur ein Symlink und zeigt dann ins Leere.
+#   Danach liegt die damals aktive Fassung unter /tmp/restore-site/current/.
+#   Bis 2026-11-09 war site/current ein Symlink auf releases/<Zeit>; für Stände
+#   davor immer site wiederherstellen, nicht site/current.
 # =============================================================================
 
 set -o pipefail
