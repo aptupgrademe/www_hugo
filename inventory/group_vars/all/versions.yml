@@ -14,7 +14,7 @@ pagefind_version:            "1.6.0"     # github.com/Pagefind/pagefind/releases
 # --- Host binaries ---------------------------------------------------------------
 node_exporter_version:       "1.12.1"    # github.com/prometheus/node_exporter/releases
 prometheus_version:          "3.16.0"    # github.com/prometheus/prometheus/releases
-loki_version:                "3.7.9"     # rpm.grafana.com (common_loki)
-alloy_version:               "1.21.3"    # rpm.grafana.com (common_loki)
+loki_version:                "3.7.10"    # rpm.grafana.com (common_loki)
+alloy_version:               "1.22.0"    # rpm.grafana.com (common_loki)
 nginx_exporter_version:      "1.5.3"     # github.com/nginx/nginx-prometheus-exporter/releases
 nginx_exporter_sha256:       "3a0dd1ea6db57cd360544d0aed38df4adabcfeb31e931dc481d535c66f92641d"
