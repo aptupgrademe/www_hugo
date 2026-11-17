@@ -160,10 +160,10 @@ http {
         if ($wp_old_page) { return 301 $wp_old_page; }
         if ($wp_old_slug) { return 301 $wp_old_slug; }
         # Feed addresses of WordPress and the ones browsers and feed readers try on their own.
-        location ~ ^(?<wp_feed_lang>/(?:de|fr|es|it))?/(?:feed|rss|rss\.xml|feed\.xml)/?$ { return 301 $wp_feed_lang/index.xml; }
-        location ~ ^(?<wp_comments_lang>/(?:de|fr|es|it))?/comments/feed/?$ { return 301 $wp_comments_lang/index.xml; }
+        location ~ ^(?<wp_feed_lang>/(?:de|fr|es|it|pt|nl|pl))?/(?:feed|rss|rss\.xml|feed\.xml)/?$ { return 301 $wp_feed_lang/index.xml; }
+        location ~ ^(?<wp_comments_lang>/(?:de|fr|es|it|pt|nl|pl))?/comments/feed/?$ { return 301 $wp_comments_lang/index.xml; }
         location ^~ /author/ { return 301 /; }
-        location ~ ^/(?<wp_author_lang>de|fr|es|it)/author/ { return 301 /$wp_author_lang/; }
+        location ~ ^/(?<wp_author_lang>de|fr|es|it|pt|nl|pl)/author/ { return 301 /$wp_author_lang/; }
         location ~ ^(?<wp_feed_of>/.+)/feed/?$ { return 301 $wp_feed_of/; }
         location = /sitemap_index.xml { return 301 /sitemap.xml; }
         location = /post-sitemap.xml { return 301 /sitemap.xml; }
