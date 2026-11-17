@@ -184,7 +184,8 @@ Only `*.example` templates with placeholders are tracked.
 All pins live in [`inventory/group_vars/all/versions.yml`](inventory/group_vars/all/versions.yml).
 Renovate proposes bumps as pull requests, `common_version_check` compares them at every run,
 `common_version_active` reports what is pinned but not running. nginx, Grafana and all other
-packages come from their repositories and are updated by dnf-automatic.
+packages come from their repositories: dnf-automatic installs security updates every night,
+everything else (also a new AlmaLinux minor release) comes with `--tags blog_packages`.
 
 ## Checks
 
