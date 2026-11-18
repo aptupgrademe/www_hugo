@@ -221,6 +221,14 @@ table inet filter {
     meta nfproto ipv4 tcp flags & (fin|syn|rst|ack) == syn tcp dport != 22 update @portscan4 { ip saddr limit rate over 30/minute burst 30 packets } add @scanban4 { ip saddr } drop
     meta nfproto ipv6 tcp flags & (fin|syn|rst|ack) == syn tcp dport != 22 update @portscan6 { ip6 saddr limit rate over 30/minute burst 30 packets } add @scanban6 { ip6 saddr } drop
 
+    # New TCP connection attempts to closed ports are internet background noise
+    # (slow scanners below the port-scan limit above). Counted, not logged:
+    # until 2026-11-18 they filled the 2/minute log budget every day (about
+    # 2,600 of 2,630 lines in 24 h were plain SYNs), so the rare unusual drops
+    # below were sampled away. The counter shows the volume:
+    #   nft list chain inet filter input | grep "scan noise"
+    tcp flags & (fin|syn|rst|ack) == syn counter drop comment "scan noise: counted, not logged"
+
     # Log everything else before the policy drop (rate-limited)
     limit rate 2/minute log prefix "nftables DROP IN:  " level warn flags all
   }
