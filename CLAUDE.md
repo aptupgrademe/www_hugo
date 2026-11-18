@@ -38,7 +38,9 @@ and in the README. This file only points the way and lists the traps.
   output (`MYSQL_PWD`, `REDISCLI_AUTH`, `sed` the `password`/`secret` lines).
 - **No push without an explicit OK** from the repository owner.
 - **Fix stale comments and docs immediately** when found; docs exist in three
-  languages (`docs/blog-operations|-betrieb|-exploitation.html`).
+  languages (`docs/blog-operations|-betrieb|-exploitation.html`). Each HTML doc also exists as
+  `docs/*.pdf`, rendered from it (headless Chromium, A4): the HTML is the source,
+  re-render the PDFs after every change so they never go stale.
 - **Delete only what is certainly dead** – data of disabled apps stays; back up
   first, count live rows.
 
