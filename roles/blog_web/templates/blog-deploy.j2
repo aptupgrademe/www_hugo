@@ -1,8 +1,8 @@
 #!/bin/bash
 # {{ ansible_managed }}
 # The only command the deploy key may run (forced in authorized_keys). It accepts
-# an rsync upload into incoming/ and "activate <id>", which turns incoming/ into a
-# release and switches the site atomically. Nothing else gets through.
+# an rsync upload into incoming/, "activate <id>" (turns incoming/ into a release
+# and switches the site atomically), "rollback" and "status". Nothing else gets through.
 set -euo pipefail
 ROOT={{ blog_web_root }}
 KEEP=5

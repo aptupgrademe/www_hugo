@@ -61,6 +61,11 @@ There is no PHP, no database, no container runtime and no login for visitors.
   an rsync into `incoming/` and `activate <id>`, which makes a hard-linked release and
   switches a symlink. The last five releases stay. `rollback` and `status` exist too,
   nothing else gets through
+- **A deploy key that is a mailbox key**: two layers. The user `blogdeploy` has no password,
+  no sudo and owns only `/srv/blog`. Its single key is set with
+  `restrict,command="/usr/local/sbin/blog-deploy"` (no shell, no forwarding, no tunnels to
+  loopback services) and `exclusive`, so a key added by hand is gone at the next run. A
+  stolen key can at most upload another version of the site or roll back
 - systemd sandbox for nginx (few capabilities, memory limit, read-only system), own
   SELinux module for the BPF part
 - nginx may open no outgoing connections except to Grafana on loopback (`common_firewall`)

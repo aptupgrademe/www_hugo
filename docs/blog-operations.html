@@ -14,6 +14,12 @@ tools/build.sh                 # Hugo + search index into public/
 tools/deploy.sh &lt;host&gt;         # upload, then switch atomically
 tools/deploy.sh &lt;host&gt; 10022 status
 tools/deploy.sh &lt;host&gt; 10022 rollback</code></pre>
+<h2>The deploy key</h2>
+<p>Two layers limit what the deploy key can do:</p>
+<ul><li><strong>A user of its own</strong>, <code>blogdeploy</code>: a system user without a password (<code>password: "!"</code>) and without sudo. It owns only <code>/srv/blog</code> (<code>incoming/</code>, <code>releases/</code>, <code>current</code>).</li>
+<li><strong>A restricted key</strong> in <code>authorized_keys</code>: <code>restrict,command="/usr/local/sbin/blog-deploy"</code>. Whatever the client asks for, only this script runs. It allows rsync into <code>incoming/</code>, <code>activate</code>, <code>rollback</code> and <code>status</code> and refuses everything else. <code>restrict</code> forbids a terminal and every kind of forwarding, including tunnels to services that listen only on loopback.</li>
+<li>Ansible sets the key with <code>exclusive: true</code>: a second key added by hand disappears at the next run.</li></ul>
+<p>Why both: a user with few rights would still get a shell on a normal SSH login, could start programs, explore readable files and open tunnels. A stolen deploy key can therefore at most upload another version of the site or roll back. To replace it: create a new key pair, put the public part into <code>blog_web_deploy_pubkey</code>, run <code>--tags blog_web</code>.</p>
 <h2>Running the playbook</h2>
 <p>Every real run starts with a check run, one host at a time. Afterwards the drift check must be clean.</p>
 <pre><code># Always first, one host at a time

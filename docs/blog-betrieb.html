@@ -14,6 +14,12 @@ tools/build.sh                 # Hugo + search index into public/
 tools/deploy.sh &lt;host&gt;         # upload, then switch atomically
 tools/deploy.sh &lt;host&gt; 10022 status
 tools/deploy.sh &lt;host&gt; 10022 rollback</code></pre>
+<h2>Deploy-Schlüssel</h2>
+<p>Zwei Ebenen begrenzen, was der Deploy-Schlüssel kann:</p>
+<ul><li><strong>Eigener Benutzer</strong> <code>blogdeploy</code>: Systembenutzer ohne Passwort (<code>password: "!"</code>) und ohne sudo. Ihm gehört nur <code>/srv/blog</code> (<code>incoming/</code>, <code>releases/</code>, <code>current</code>).</li>
+<li><strong>Eingeschränkter Schlüssel</strong> in <code>authorized_keys</code>: <code>restrict,command="/usr/local/sbin/blog-deploy"</code>. Egal, was der Client verlangt, es läuft nur dieses Skript. Es lässt rsync nach <code>incoming/</code>, <code>activate</code>, <code>rollback</code> und <code>status</code> zu und lehnt alles andere ab. <code>restrict</code> verbietet Terminal und jede Weiterleitung, auch Tunnel zu Diensten, die nur auf Loopback lauschen.</li>
+<li>Ansible setzt den Schlüssel mit <code>exclusive: true</code>: Ein von Hand eingetragener zweiter Schlüssel verschwindet beim nächsten Lauf.</li></ul>
+<p>Warum beides: Ein Benutzer mit wenig Rechten bekäme bei einer normalen SSH-Anmeldung trotzdem eine Shell, könnte Programme starten, lesbare Dateien auskundschaften und Tunnel öffnen. Ein gestohlener Deploy-Schlüssel kann damit höchstens eine andere Fassung der Seite hochladen oder zurückrollen. Austauschen: neues Schlüsselpaar erzeugen, den öffentlichen Teil in <code>blog_web_deploy_pubkey</code> eintragen, <code>--tags blog_web</code> ausführen.</p>
 <h2>Playbook ausführen</h2>
 <p>Vor jedem echten Lauf kommt der Check-Lauf, immer nur ein Host. Danach muss die Drift-Prüfung sauber sein.</p>
 <pre><code># Always first, one host at a time
