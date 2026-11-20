@@ -16,6 +16,14 @@ fail2ban_nft_jails:
   nginx-bad-paths: bad_paths
   recidive: recidive
 
+# Vendor repositories without security metadata: dnf-automatic (security
+# updates only) never updates them, update-vendor-repos takes every update
+# from them at 02:15 (common_dnf_automatic). nginx-mainline: blog_packages,
+# grafana: common_grafana.
+dnf_automatic_vendor_repos:
+  - nginx-mainline
+  - grafana
+
 # Monitoring
 prometheus_retention: "30d"
 # grafana_admin_pass: set per host in host_vars/<host>/vault.yml

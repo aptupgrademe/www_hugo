@@ -7,3 +7,8 @@
 # defaults/ = lowest-priority role variables.
 
 dnf_automatic_reboot_mail: "{{ email }}"
+
+# Repo ids whose updates are applied in full at 02:15 (update-vendor-repos):
+# vendor repositories without security metadata, which upgrade_type = security
+# never touches. Empty = no job.
+dnf_automatic_vendor_repos: []

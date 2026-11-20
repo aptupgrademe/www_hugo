@@ -137,6 +137,34 @@
     user: root
 
 # -----------------------------------------------------------------------------
+# Vendor repositories (nginx.org, rpm.grafana.com, ...)
+# They publish no security metadata (updateinfo), so upgrade_type = security
+# above never installs anything from them - found 2026-11-20: nginx stayed on
+# 1.31.8 after the 1.31.9 security release. update-vendor-repos takes every
+# update from exactly these repositories at 02:15, after the dnf-automatic
+# window (01:00 + up to 60 min) and before the 03:45 service restarts and the
+# 04:00 AIDE refresh. Hosts list their repo ids in dnf_automatic_vendor_repos.
+# -----------------------------------------------------------------------------
+- name: dnf-automatic | Deploy update-vendor-repos script
+  ansible.builtin.copy:
+    src: update-vendor-repos
+    dest: /usr/local/sbin/update-vendor-repos
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: dnf-automatic | Update vendor repositories at 02:15
+  ansible.builtin.cron:
+    name: "update vendor repositories"
+    hour: "2"
+    minute: "15"
+    job: >-
+      /usr/local/sbin/update-vendor-repos {{ dnf_automatic_vendor_repos | join(',') }} {{ dnf_automatic_reboot_mail }}
+      && /usr/local/sbin/heartbeat-mark vendor_repos 108000
+    user: root
+    state: "{{ 'present' if dnf_automatic_vendor_repos | length > 0 else 'absent' }}"
+
+# -----------------------------------------------------------------------------
 # Reboot-required check (safety net)
 # Runs at 06:00, after the 03:30 job above should already have rebooted the
 # box if needed. If a reboot is STILL pending at this point, the automatic

@@ -4,7 +4,9 @@
 # =============================================================================
 # Change a value here, run the playbook with --check --diff first, then for
 # real. nginx (nginx.org mainline), Grafana and all other system packages come
-# from their repositories and are updated by dnf-automatic.
+# from their repositories: AlmaLinux packages get their security updates from
+# dnf-automatic, nginx and Grafana every update from update-vendor-repos at
+# 02:15 (their repositories carry no security metadata, see dnf_automatic_vendor_repos).
 # =============================================================================
 
 # --- Build tools, used on the machine that builds the site ---------------------

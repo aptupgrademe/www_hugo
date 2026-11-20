@@ -109,6 +109,13 @@ and in the README. This file only points the way and lists the traps.
 - **fail2ban cuts the timestamp out of the line before matching**: the regex must be
   `^<HOST> - \S+ [^"]*"...`, without expecting anything between the brackets.
 
+### Updates
+- **dnf-automatic with `upgrade_type = security` never touches vendor repositories** (nginx.org,
+  rpm.grafana.com): they publish no updateinfo, so nothing in them counts as a security fix. nginx stayed
+  on 1.31.8 after the 1.31.9 security release (2026-11-20). `update-vendor-repos` (common_dnf_automatic,
+  list in `dnf_automatic_vendor_repos`) takes every update from them at 02:15. A new third-party repo
+  goes into that list.
+
 ### AlmaLinux 10
 - `file_contexts.subs_dist` is **reversed** compared to EL9: `.fc` paths use `/run/…`.
 - There is no `/etc/systemd/journald.conf` any more: use a drop-in.

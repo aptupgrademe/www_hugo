@@ -1,0 +1,47 @@
+#!/bin/bash
+# Managed by Ansible (common_dnf_automatic) - do not edit manually.
+#
+# Apply every update from the vendor repositories named in $1 (comma-separated
+# repo ids, e.g. "nginx-mainline,grafana").
+#
+# Why: dnf-automatic runs with upgrade_type = security and installs only
+# packages that a repository marks as security fixes in its updateinfo
+# metadata. Vendor repositories such as nginx.org and rpm.grafana.com publish
+# no updateinfo at all, so their packages were never updated automatically -
+# found 2026-11-20, when nginx stayed on 1.31.8 after the 1.31.9 security
+# release. These vendors ship fixes as normal releases, so every update from
+# them is taken.
+#
+# Only the named repositories are enabled for this run: nothing else changes.
+# The 03:45 job (restart-updated-services) restarts the services that now run
+# replaced code, the 04:00 AIDE refresh takes the new files into the baseline.
+# Mails only when something was updated or the update failed.
+set -u
+REPOS="${1:?usage: update-vendor-repos <repo-id,...> [mail-to]}"
+MAIL_TO="${2:-root}"
+
+list() { rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' | sort; }
+before=$(list)
+out=$(/usr/bin/dnf -y -q --disablerepo='*' --enablerepo="$REPOS" \
+      --setopt=install_weak_deps=False upgrade 2>&1)
+rc=$?
+after=$(list)
+changes=$(diff <(echo "$before") <(echo "$after") | grep '^>' | sed 's/^> /  /')
+
+if [ $rc -ne 0 ] || [ -n "$changes" ]; then
+    prefix=""; [ $rc -ne 0 ] && prefix="FAILED: "
+    {
+        echo "Repositories: $REPOS"
+        echo
+        echo "Updated packages (new version):"
+        echo "${changes:-  none}"
+        if [ $rc -ne 0 ]; then
+            echo
+            echo "dnf FAILED (exit $rc):"
+            echo "$out"
+        fi
+        echo
+        echo "The services are restarted at 03:45 (restart-updated-services)."
+    } | /usr/bin/mail -s "[$(hostname -f)] ${prefix}vendor repository updates" "$MAIL_TO"
+fi
+exit $rc
