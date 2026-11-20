@@ -40,7 +40,7 @@ and in the README. This file only points the way and lists the traps.
 - **Fix stale comments and docs immediately** when found; docs exist in three
   languages (`docs/blog-operations|-betrieb|-exploitation.html`). Each HTML doc also exists as
   `docs/*.pdf`, rendered from it (headless Chromium, A4): the HTML is the source,
-  re-render the PDFs after every change so they never go stale.
+  re-render the PDFs after every change so they never go stale (`scripts/render-docs-pdf.py`).
 - **Delete only what is certainly dead** – data of disabled apps stays; back up
   first, count live rows.
 
