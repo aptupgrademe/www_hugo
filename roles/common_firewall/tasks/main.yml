@@ -212,6 +212,8 @@
         - /usr/local/sbin/ssh-geo-update
         - /etc/ssh-geo.conf
         - /etc/nftables/ssh-geo.nft
+        - /etc/systemd/system/ssh-geo-update.service.d
+        - /var/lib/node_exporter/textfile/heartbeat_ssh_geo_update.prom
 
 # The stock unit reloads with 'flush ruleset; include ...' and stops with
 # 'flush ruleset'. That would wipe every table on the host, not only ours (it

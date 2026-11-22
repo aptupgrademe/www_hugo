@@ -11,3 +11,10 @@ heartbeat_units:
   - {unit: ssh-geo-update.service,            task: ssh_geo_update,    max_age: 691200}
   - {unit: dnf-automatic-install.service,     task: dnf_automatic,     max_age: 108000}
   - {unit: visitor-stats-daily.service,       task: visitor_stats,     max_age: 108000, sandboxed: true}
+
+# The SSH country filter is optional (fw_ssh_geo_countries). Without it there is no
+# ssh-geo-update job, so its heartbeat must not be seeded either - otherwise the
+# "job overdue" alert fires after max_age (found 2026-11-22 on the test host).
+heartbeat_units_active: >-
+  {{ heartbeat_units if (fw_ssh_geo_countries | default([]) | length > 0)
+     else (heartbeat_units | rejectattr('task', 'equalto', 'ssh_geo_update') | list) }}

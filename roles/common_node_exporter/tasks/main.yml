@@ -160,7 +160,7 @@
     owner: root
     group: root
     mode: "0755"
-  loop: "{{ heartbeat_units }}"
+  loop: "{{ heartbeat_units_active }}"
   loop_control:
     label: "{{ item.unit }}"
 
@@ -178,7 +178,7 @@
       # ExecStartPost runs inside the unit's ProtectSystem=strict sandbox
       ReadWritePaths=/var/lib/node_exporter/textfile
       {% endif %}
-  loop: "{{ heartbeat_units }}"
+  loop: "{{ heartbeat_units_active }}"
   loop_control:
     label: "{{ item.unit }}"
   notify: reload systemd
@@ -193,7 +193,7 @@
   ansible.builtin.command:
     cmd: "/usr/local/sbin/heartbeat-mark {{ item.task }} {{ item.max_age }}"
     creates: "/var/lib/node_exporter/textfile/heartbeat_{{ item.task }}.prom"
-  loop: "{{ heartbeat_units }}"
+  loop: "{{ heartbeat_units_active }}"
   loop_control:
     label: "{{ item.task }}"
 
