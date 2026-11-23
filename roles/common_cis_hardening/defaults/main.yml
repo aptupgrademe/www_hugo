@@ -7,3 +7,10 @@
 # defaults/ = lowest-priority role variables.
 
 aide_mail: "{{ email }}"
+
+# CIS: journald and rsyslog not active together. true = rsyslog stopped,
+# disabled and masked, journald stops forwarding to syslog; logs are only in
+# the journal (fail2ban, Loki/Alloy and Monit read it, nothing in this repo
+# reads /var/log/messages or /var/log/secure). Proven on the Nextcloud hosts
+# (test first, then production, 2026-11-23).
+cis_journald_only: true

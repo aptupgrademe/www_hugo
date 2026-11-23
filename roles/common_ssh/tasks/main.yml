@@ -134,6 +134,9 @@
       KbdInteractiveAuthentication no
       PermitRootLogin prohibit-password
       X11Forwarding no
+      {% if ssh_disable_gssapi | bool %}
+      GSSAPIAuthentication no
+      {% endif %}
   notify:
     - Validate sshd config
     - Reload sshd

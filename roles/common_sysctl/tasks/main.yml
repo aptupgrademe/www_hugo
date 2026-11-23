@@ -185,3 +185,16 @@
       ansible.builtin.file:
         path: /swapfile
         state: absent
+
+# sysctl_console_quiet (defaults/main.yml): only errors on the console.
+- name: Sysctl | Console loglevel - only errors on the console
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-console-loglevel.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_sysctl, sysctl_console_quiet) - do not edit manually.
+      kernel.printk = 4 4 1 7
+  when: sysctl_console_quiet | bool
+  notify: apply sysctl

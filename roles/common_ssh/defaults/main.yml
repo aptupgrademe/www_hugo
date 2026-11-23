@@ -2,4 +2,9 @@
 # SSH port and key settings are defined in inventory (host_vars/<host>/vars.yml:
 # ansible_port).  The sshd_config file is in roles/common_ssh/files/sshd_config.
 #
-# (No defaults - see the comment below.)
+# The one default below switches GSSAPI off.
+
+# GSSAPIAuthentication (Kerberos) - EL ships it on in 50-redhat.conf, without
+# a keytab it does nothing but sshd still offers gssapi-keyex/gssapi-with-mic.
+# Proven on the Nextcloud hosts (test first, then production, 2026-11-23).
+ssh_disable_gssapi: true

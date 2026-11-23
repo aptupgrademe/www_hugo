@@ -1,0 +1,10 @@
+---
+# defaults/ = lowest-priority role variables.
+
+# Console loglevel. The default "7 4 1 7" writes every kernel warning to the
+# virtual console nobody looks at; on virtio-gpu hosts that produced
+# "[drm] vblank wait timed out" with a stack trace and the kernel tainted W.
+# true = kernel.printk "4 4 1 7": only errors and worse go to the console,
+# everything still lands in the journal. Proven on the Nextcloud hosts
+# (test first, then production, 2026-11-23).
+sysctl_console_quiet: true

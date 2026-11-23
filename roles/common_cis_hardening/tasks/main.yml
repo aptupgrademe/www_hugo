@@ -519,3 +519,25 @@
     fstype: tmpfs
     opts: nodev,nosuid,noexec
     state: mounted
+
+# cis_journald_only (defaults/main.yml): only journald, no rsyslog.
+- name: CIS | journald does not forward to syslog (journald only)
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/60-journald-only.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common_cis_hardening, cis_journald_only) - do not edit manually.
+      [Journal]
+      ForwardToSyslog=no
+  when: cis_journald_only | bool
+  notify: restart journald
+
+- name: CIS | rsyslog stopped, disabled and masked (journald only)
+  ansible.builtin.systemd:
+    name: rsyslog
+    state: stopped
+    enabled: false
+    masked: true
+  when: cis_journald_only | bool
