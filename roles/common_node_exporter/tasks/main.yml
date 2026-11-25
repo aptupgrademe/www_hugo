@@ -57,6 +57,9 @@
           node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
     dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
     mode: "0644"
+    # Checked against the release's published sha256 list (review R5 of
+    # nextcloud_k3s, ported 2026-11-25): a corrupt or swapped download fails here.
+    checksum: "sha256:https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/sha256sums.txt"
 
 - name: Node Exporter | Extract archive
   when:
@@ -106,6 +109,7 @@
       ExecStart=/usr/local/bin/node_exporter \
         --web.listen-address=127.0.0.1:9100 \
         --collector.textfile.directory=/var/lib/node_exporter/textfile \
+        --no-collector.nfs --no-collector.nfsd \
         --collector.netdev.device-exclude=^(dummy.*|lo)$
       Restart=on-failure
       RestartSec=5s
@@ -230,6 +234,18 @@
       ProtectKernelModules=yes
       ProtectControlGroups=yes
       SystemCallArchitectures=native
+      # Review 2026-11-23 (H6-H8, ported from nextcloud_k3s 2026-11-25): syscall filter, no W+X memory, no namespaces.
+      # adjtimex is in @clock: the timex collector only READS the clock state
+      # with it (ProtectClock would forbid it, so that one stays off).
+      SystemCallFilter=@system-service adjtimex
+      # A blocked call returns EPERM instead of killing the process (with the
+      # default action node_exporter died with SIGSYS every 15 s, no audit record).
+      SystemCallErrorNumber=EPERM
+      MemoryDenyWriteExecute=yes
+      RestrictNamespaces=yes
+      PrivateDevices=yes
+      ProtectKernelLogs=yes
+      ProtectHostname=yes
   notify:
     - reload systemd
     - restart node_exporter

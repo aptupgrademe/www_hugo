@@ -177,16 +177,18 @@
 # maintenance, not a finding - see the "unnecessary notifications" ask
 # that prompted this fix. Same rc-tolerant shape as common_aide_refresh
 # (aide --update's non-zero exit on finding+recording changes is normal,
-# not a failure - only the presence of aide.db.new.gz signals success).
+# not a failure). rc 1-7 = changes recorded; 14+ = AIDE error: then a
+# half-written aide.db.new.gz must NOT become the baseline - it is deleted
+# instead, the missing heartbeat reports it (nextcloud_k3s review R8, ported 2026-11-25).
 - name: CIS | Schedule nightly AIDE baseline refresh (after dnf-automatic's update window)
   ansible.builtin.cron:
     name: "AIDE baseline refresh after automatic updates"
     hour: "4"
     minute: "0"
     job: >-
-      nice -n 10 /usr/sbin/aide --update --workers=$(nproc) >/dev/null 2>&1;
-      [ -f /var/lib/aide/aide.db.new.gz ] && mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
-      && /usr/local/sbin/heartbeat-mark aide_update 108000
+      nice -n 10 /usr/sbin/aide --update --workers=$(nproc) >/dev/null 2>&1; rc=$?;
+      [ $rc -lt 8 ] && [ -f /var/lib/aide/aide.db.new.gz ] && mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+      && /usr/local/sbin/heartbeat-mark aide_update 108000; rm -f /var/lib/aide/aide.db.new.gz
     user: root
 
 # A hand-made /etc/cron.d/aide-check from August 2026 (not in any role, not
@@ -460,7 +462,8 @@
       - samba-common-libs
       - samba-client-libs
     state: absent
-    autoremove: true
+    # No autoremove: it removes every unneeded dependency of the WHOLE system on
+    # every run, not only those of these packages (nextcloud_k3s review R10).
 
 # -----------------------------------------------------------------------------
 # Mount hardening: nodev/nosuid/noexec on /tmp, /var/tmp, /dev/shm
@@ -468,8 +471,14 @@
 # /tmp and /var/tmp are on the root filesystem here (no separate partition),
 # so this uses a bind-remount via fstab rather than repartitioning.
 # noexec on /tmp: nothing in this repo executes a file from /tmp.
-# state: mounted bound /tmp again on every run under AlmaLinux 10 and stacked over
-# 2,000 mounts within a day (found 2026-11-06). So: fstab entry always, mount once.
+# fstab only (state: present), the mount itself happens in the last task.
+# "state: mounted" bound /tmp again on every run under AlmaLinux 10 and stacked
+# over 2,000 mounts within a day (found 2026-11-06). The "mount once" commands
+# that replaced it still ran inside the SSH session - sshd's own mount
+# namespace (common_ssh sandbox), not the host's: on the Nextcloud test host a
+# later host mount propagated on top of that one and the stack doubled on every
+# run (129 layers, found 2026-11-21). Same fix as nextcloud_k3s (ported
+# 2026-11-25): fstab entries, then one mount in the HOST namespace via systemd-run.
 - name: CIS | Hardened mount options for /tmp in fstab
   ansible.posix.mount:
     path: /tmp
@@ -478,20 +487,6 @@
     opts: bind,nodev,nosuid,noexec
     state: present
 
-- name: CIS | Is /tmp a mount point?
-  ansible.builtin.command: findmnt -n -M /tmp
-  register: _cis_mnt_tmp
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: CIS | Mount /tmp once
-  ansible.builtin.command: mount /tmp  # noqa: command-instead-of-module
-  when: _cis_mnt_tmp.rc != 0
-  changed_when: true
-
-# state: mounted bound /var/tmp again on every run under AlmaLinux 10 and stacked over
-# 2,000 mounts within a day (found 2026-11-06). So: fstab entry always, mount once.
 - name: CIS | Hardened mount options for /var/tmp in fstab
   ansible.posix.mount:
     path: /var/tmp
@@ -500,25 +495,30 @@
     opts: bind,nodev,nosuid,noexec
     state: present
 
-- name: CIS | Is /var/tmp a mount point?
-  ansible.builtin.command: findmnt -n -M /var/tmp
-  register: _cis_mnt_var_tmp
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: CIS | Mount /var/tmp once
-  ansible.builtin.command: mount /var/tmp  # noqa: command-instead-of-module
-  when: _cis_mnt_var_tmp.rc != 0
-  changed_when: true
-
-- name: CIS | Add hardened mount options for /dev/shm
+- name: CIS | Hardened mount options for /dev/shm in fstab
   ansible.posix.mount:
     path: /dev/shm
     src: tmpfs
     fstype: tmpfs
     opts: nodev,nosuid,noexec
-    state: mounted
+    state: present
+
+# Mount in the HOST namespace (systemd-run escapes the SSH sandbox), only
+# where the hardened options are missing there: mount from fstab, or remount
+# with the fstab options if something is already mounted at that path. The
+# mount then reaches sshd's namespace through propagation, as one layer.
+- name: CIS | Apply the hardened mounts on the host
+  ansible.builtin.command: >-
+    systemd-run --wait --pipe --quiet --collect --
+    sh -c 'o=$(findmnt -no OPTIONS --mountpoint {{ item }} || true);
+    case "$o" in *nodev*nosuid*noexec*|*nosuid*nodev*noexec*) exit 0 ;; esac;
+    if mountpoint -q {{ item }}; then mount -o remount {{ item }}; else mount {{ item }}; fi && echo applied'
+  loop:
+    - /tmp
+    - /var/tmp
+    - /dev/shm
+  register: cis_host_mounts
+  changed_when: "'applied' in cis_host_mounts.stdout"
 
 # cis_journald_only (defaults/main.yml): only journald, no rsyslog.
 - name: CIS | journald does not forward to syslog (journald only)

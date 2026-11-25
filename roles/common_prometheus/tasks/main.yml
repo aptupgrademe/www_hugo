@@ -97,6 +97,9 @@
           prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
     dest: "/tmp/prometheus-{{ prometheus_version }}.tar.gz"
     mode: "0644"
+    # Checked against the release's published sha256 list (review R5 of
+    # nextcloud_k3s, ported 2026-11-25): a corrupt or swapped download fails here.
+    checksum: "sha256:https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/sha256sums.txt"
 
 # remote_src: true = the archive is already on the server (default would
 # be: copy it from the controller). creates: skips the task if that file
@@ -227,6 +230,14 @@
       ProtectKernelModules=yes
       ProtectControlGroups=yes
       SystemCallArchitectures=native
+      # Review 2026-11-23 (H6-H8, ported from nextcloud_k3s 2026-11-25): syscall filter, no W+X memory, no namespaces.
+      SystemCallFilter=@system-service
+      MemoryDenyWriteExecute=yes
+      RestrictNamespaces=yes
+      PrivateDevices=yes
+      ProtectKernelLogs=yes
+      ProtectClock=yes
+      ProtectHostname=yes
   notify:
     - reload systemd
     - restart prometheus

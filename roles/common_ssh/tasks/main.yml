@@ -109,6 +109,9 @@
     group: root
     mode: "0600"
     backup: true
+    # Checked BEFORE it replaces the old file: a broken config would
+    # otherwise stay on disk and lock sshd out at the next reboot.
+    validate: /usr/sbin/sshd -t -f %s
   notify: Validate sshd config
 
 
@@ -127,15 +130,22 @@
     owner: root
     group: root
     mode: "0600"
+    validate: /usr/sbin/sshd -t -f %s   # as above (same as nextcloud_k3s, review R11)
     content: |
       # Managed by Ansible (role common_ssh) - do not edit.
       # Sorts before provider drop-ins such as 50-cloud-init.conf (first value wins).
       PasswordAuthentication no
       KbdInteractiveAuthentication no
       PermitRootLogin prohibit-password
+      PermitEmptyPasswords no
       X11Forwarding no
       {% if ssh_disable_gssapi | bool %}
       GSSAPIAuthentication no
+      {% endif %}
+      {% if ssh_pin_crypto | bool %}
+      KexAlgorithms {{ ssh_kex_algorithms | join(',') }}
+      Ciphers {{ ssh_ciphers | join(',') }}
+      MACs {{ ssh_macs | join(',') }}
       {% endif %}
   notify:
     - Validate sshd config

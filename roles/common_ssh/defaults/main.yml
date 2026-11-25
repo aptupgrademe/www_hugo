@@ -8,3 +8,25 @@
 # a keytab it does nothing but sshd still offers gssapi-keyex/gssapi-with-mic.
 # Proven on the Nextcloud hosts (test first, then production, 2026-11-23).
 ssh_disable_gssapi: true
+
+# Algorithms pinned in 00-hardening.conf. The same lines in files/sshd_config
+# never take effect: 50-redhat.conf includes the crypto-policy back-end
+# earlier and sshd keeps the first value. 00-* sorts first, so these win.
+# Post-quantum key exchange first (OpenSSH 9.9 on EL9/EL10), curve25519 stays
+# as the fallback for older clients. Proven on the Nextcloud hosts (test
+# 2026-11-23, production 2026-11-24), ported here 2026-11-25.
+ssh_pin_crypto: true
+ssh_kex_algorithms:
+  - mlkem768x25519-sha256
+  - sntrup761x25519-sha512@openssh.com
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org
+  - diffie-hellman-group-exchange-sha256
+ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+ssh_macs:
+  - hmac-sha2-512-etm@openssh.com
+  - hmac-sha2-256-etm@openssh.com
+  - umac-128-etm@openssh.com

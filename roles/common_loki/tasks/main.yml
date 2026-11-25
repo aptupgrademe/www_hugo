@@ -113,6 +113,10 @@
       # bounding set above is empty) can only read, not change the network.
       RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
       SystemCallArchitectures=native
+      # Review 2026-11-23 (H6-H8, ported from nextcloud_k3s 2026-11-25): syscall filter, no W+X memory, no namespaces.
+      SystemCallFilter=@system-service
+      MemoryDenyWriteExecute=yes
+      RestrictNamespaces=yes
   notify: restart loki
   ignore_errors: "{{ ansible_check_mode }}"   # first --check: directory not there yet
 
@@ -179,6 +183,15 @@
       LockPersonality=yes
       RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
       SystemCallArchitectures=native
+      # Review 2026-11-23 (H6-H8, ported from nextcloud_k3s 2026-11-25): syscall filter, no W+X memory, no namespaces.
+      SystemCallFilter=@system-service
+      MemoryDenyWriteExecute=yes
+      RestrictNamespaces=yes
+      # CAP_DAC_READ_SEARCH lets Alloy read any file; it needs only the journal
+      # and its own log files. Hide the secrets it never reads ("-": a path that
+      # does not exist on this host is fine). /etc/shadow cannot be covered:
+      # SELinux denies systemd the mount over shadow_t (alloy did not start).
+      InaccessiblePaths=-/root -/etc/msmtprc -/etc/ssh
   notify: restart alloy
   ignore_errors: "{{ ansible_check_mode }}"   # first --check: directory not there yet
 
